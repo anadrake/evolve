@@ -1,0 +1,1100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Evolve">
+<meta name="theme-color" content="#0e1519">
+<title>Evolve Proto</title>
+<style>
+:root{
+  --bg:#0e1519; --panel:rgba(22,32,38,.84); --panel2:rgba(255,255,255,.05); --line:rgba(255,255,255,.08);
+  --text:#e8eef0; --dim:#8b9ca4;
+  --fertility:#f28bb6; --vitality:#ff8a5c; --adaptability:#5cc8e0;
+  --THRIVING:#5fcf80; --STABLE:#e6c94f; --STRUGGLING:#ee8f3a; --CRITICAL:#e5484d; --EXTINCT:#666;
+  --sat:env(safe-area-inset-top,0px); --sab:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+  font:14px/1.3 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;
+  overflow:hidden;overscroll-behavior:none;position:fixed;inset:0;touch-action:manipulation}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;touch-action:manipulation}
+canvas#board{position:fixed;inset:0;width:100%;height:100%;touch-action:none;display:block}
+.card{background:var(--panel);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border:1px solid var(--line);border-radius:18px;box-shadow:0 8px 30px rgba(0,0,0,.25)}
+.dim{color:var(--dim)}
+
+/* ---------- HUD ---------- */
+#hud{position:fixed;left:0;right:0;top:0;margin:0 auto;max-width:480px;padding:calc(var(--sat) + 8px) 10px 0;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+#hud>*{pointer-events:auto}
+#popCard{padding:10px 12px 10px}
+.toprow{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+#turnLbl{font-size:12px;color:var(--dim);letter-spacing:.02em;flex:1}
+#turnLbl b{color:var(--text);font-weight:600}
+.iconbtn{width:30px;height:30px;border-radius:10px;background:var(--panel2);display:grid;place-items:center;font-size:15px;color:var(--dim)}
+.iconbtn:active{transform:scale(.92)}
+.poprow{display:flex;align-items:baseline;gap:6px}
+#popNum{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+#popMax{font-size:12px;font-variant-numeric:tabular-nums}
+.pill{margin-left:auto;font-size:10px;font-weight:700;letter-spacing:.08em;padding:3px 8px;border-radius:99px;background:var(--c);color:#111;transition:background .4s}
+.bar{position:relative;height:10px;border-radius:99px;background:rgba(255,255,255,.07);margin:7px 0 10px;overflow:hidden}
+.bar .lag{position:absolute;inset:0 auto 0 0;background:#fff;opacity:.55;border-radius:99px}
+.bar .fill{position:absolute;inset:0 auto 0 0;background:var(--c);border-radius:99px;transition:background .4s}
+.bar i{position:absolute;top:0;bottom:0;width:1px;background:rgba(0,0,0,.45)}
+.bar.hit{animation:hit .35s}
+@keyframes hit{20%{transform:translateX(-4px)}40%{transform:translateX(4px)}60%{transform:translateX(-2px)}80%{transform:translateX(2px)}}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.stat{background:var(--panel2);border-radius:12px;padding:6px 8px;border-top:2px solid var(--sc);transition:transform .15s}
+.stat .v{font-size:18px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--sc)}
+.stat .n{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);margin-left:4px}
+.stat .d{display:block;font-size:11px;color:var(--dim);font-variant-numeric:tabular-nums;margin-top:1px}
+.stat.bump{animation:bump .45s cubic-bezier(.3,1.6,.5,1)}
+@keyframes bump{30%{transform:scale(1.08)}}
+
+#threatCard{padding:9px 12px;display:grid;grid-template-columns:34px 1fr auto;gap:2px 10px;align-items:center;transition:border-color .3s}
+#threatCard.enter{animation:enter .5s cubic-bezier(.2,1.3,.4,1)}
+@keyframes enter{from{transform:translateY(-14px);opacity:0}}
+#threatCard.urgent{border-color:rgba(229,72,77,.6);animation:urgent 1.2s infinite}
+@keyframes urgent{50%{box-shadow:0 0 0 3px rgba(229,72,77,.25),0 8px 30px rgba(0,0,0,.25)}}
+#thIcon{grid-row:span 2;font-size:24px;width:34px;height:34px;display:grid;place-items:center;border-radius:10px;background:var(--panel2)}
+#thName{font-weight:650;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#thSub{font-size:11px;color:var(--dim)}
+#thCountWrap{grid-row:span 2;text-align:center;min-width:44px}
+#thCount{font-size:24px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
+#thCountLbl{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em}
+#thFoot{grid-column:1/-1;display:flex;align-items:center;gap:8px;margin-top:5px}
+#pips{display:flex;gap:3px;flex:1}
+#pips span{flex:1;height:4px;border-radius:2px;background:rgba(255,255,255,.12);max-width:26px}
+#pips span.done{background:rgba(255,255,255,.4)}
+#pips span.dmg{background:rgba(255,255,255,.12);box-shadow:inset 0 -2px 0 var(--CRITICAL)}
+#pips span.done.dmg{background:var(--CRITICAL)}
+#pips span.strike{background:transparent;border:1px solid var(--CRITICAL)}
+#thCounter{font-size:10px;font-weight:600;letter-spacing:.04em;padding:2px 7px;border-radius:99px;background:var(--panel2);color:var(--sc)}
+#thDealt{font-size:11px;color:var(--CRITICAL);font-variant-numeric:tabular-nums}
+
+/* ---------- Tray ---------- */
+#tray{position:fixed;left:10px;right:10px;bottom:calc(var(--sab) + 10px);margin:0 auto;max-width:460px;padding:10px;display:grid;grid-template-columns:84px 1fr 92px;gap:10px;align-items:center}
+#frontWrap{width:84px;height:84px;border-radius:14px;background:var(--panel2);display:grid;place-items:center;touch-action:none;position:relative}
+#frontCv{width:68px;height:68px;transition:transform .22s cubic-bezier(.3,1.4,.5,1);filter:drop-shadow(0 4px 6px rgba(0,0,0,.35))}
+#frontWrap.lifted #frontCv{opacity:.15}
+#frontWrap.pop #frontCv{animation:frontIn .35s cubic-bezier(.2,1.4,.4,1)}
+@keyframes frontIn{from{opacity:0;scale:.6}}
+#info{min-width:0}
+#tName{font-weight:650;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#tStat{font-size:12px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#tStat b{color:var(--sc)}
+#nextRow{display:flex;align-items:center;gap:6px;margin-top:8px}
+#nextRow .lbl{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em}
+#nextRow canvas{width:30px;height:30px;border-radius:4px;opacity:.9}
+#acts{display:flex;flex-direction:column;gap:6px}
+#acts button{height:38px;border-radius:12px;font-weight:600;font-size:14px}
+#rotBtn{background:var(--panel2)}
+#placeBtn{background:#e8eef0;color:#111;transition:opacity .2s,transform .1s}
+#placeBtn:disabled{opacity:.25}
+#acts button:active{transform:scale(.95)}
+#dragHint{font-size:11px;color:var(--dim);text-align:center;line-height:1.25;padding:4px 0}
+#recenter{position:fixed;right:14px;width:38px;height:38px;border-radius:12px;font-size:17px;color:var(--dim)}
+
+/* ---------- Overlays ---------- */
+#scrim{position:fixed;inset:0;background:rgba(5,9,11,.55);opacity:0;pointer-events:none;transition:opacity .25s}
+#scrim.on{opacity:1;pointer-events:auto}
+.sheet{position:fixed;left:0;right:0;bottom:0;margin:0 auto;max-width:480px;max-height:80vh;overflow:auto;padding:16px 16px calc(var(--sab) + 16px);border-radius:22px 22px 0 0;transform:translateY(105%);transition:transform .32s cubic-bezier(.2,.9,.3,1);-webkit-overflow-scrolling:touch}
+.sheet.open{transform:none}
+.sheet h3{margin:0 0 12px;font-size:17px}
+.set{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid var(--line)}
+.set>span{font-size:14px}
+.set small{display:block;color:var(--dim);font-size:11px}
+.seg{display:flex;background:var(--panel2);border-radius:10px;padding:2px;flex-shrink:0}
+.seg button{padding:6px 10px;border-radius:8px;font-size:12px;color:var(--dim)}
+.seg button.on{background:#e8eef0;color:#111;font-weight:600}
+.btnrow{display:flex;gap:8px;margin-top:14px}
+.btn{flex:1;height:44px;border-radius:12px;background:var(--panel2);font-weight:600}
+.btn.primary{background:#e8eef0;color:#111}
+#logList{font-size:13px}
+#logList div{padding:7px 0;border-bottom:1px solid var(--line)}
+#logList .t{color:var(--dim);font-variant-numeric:tabular-nums;display:inline-block;width:34px}
+.overlay{position:fixed;inset:0;display:grid;place-items:center;padding:20px;pointer-events:none;opacity:0;transition:opacity .25s}
+.overlay.on{opacity:1;pointer-events:auto}
+.overlay .card{width:100%;max-width:380px;padding:20px;transform:scale(.92);transition:transform .35s cubic-bezier(.2,1.4,.4,1);max-height:88vh;overflow:auto}
+.overlay.on .card{transform:none}
+.overlay h2{margin:0 0 4px;font-size:22px}
+.overlay p{margin:6px 0;color:#c8d3d8}
+.big{font-size:40px;font-weight:800;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.kv{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px;font-variant-numeric:tabular-nums}
+.kv span:first-child{color:var(--dim)}
+.verdict{margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--panel2);font-size:13px}
+.legend{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;margin:10px 0;font-size:12px}
+.legend div{display:flex;align-items:center;gap:6px}
+.legend i{width:14px;height:14px;border-radius:4px;display:inline-block}
+.help li{margin:6px 0;color:#c8d3d8}
+.help ul{padding-left:18px;margin:8px 0}
+#flash{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,transparent 40%,rgba(229,72,77,.45));opacity:0;transition:opacity .6s}
+#flash.on{opacity:1;transition:none}
+.float{position:fixed;font-weight:800;font-size:16px;pointer-events:none;animation:floatUp 1.1s ease-out forwards;text-shadow:0 2px 8px rgba(0,0,0,.6)}
+@keyframes floatUp{to{transform:translateY(-26px);opacity:0}}
+.hapt{position:absolute;opacity:0;pointer-events:none;width:1px;height:1px;overflow:hidden}
+</style>
+</head>
+<body>
+<canvas id="board"></canvas>
+<div id="flash"></div>
+
+<div id="hud">
+  <div class="card" id="popCard">
+    <div class="toprow">
+      <div id="turnLbl">Turn <b>0</b> · Early era</div>
+      <button class="iconbtn" id="helpBtn" aria-label="Help">?</button>
+      <button class="iconbtn" id="logBtn" aria-label="Log">☰</button>
+      <button class="iconbtn" id="setBtn" aria-label="Settings">⚙︎</button>
+    </div>
+    <div class="poprow">
+      <span id="popNum">5,000</span><span id="popMax" class="dim">/ 5,000 individuals</span>
+      <span class="pill" id="tierPill">THRIVING</span>
+    </div>
+    <div class="bar" id="popBar"><div class="lag" id="popLag"></div><div class="fill" id="popFill"></div><i style="left:25%"></i><i style="left:50%"></i><i style="left:75%"></i></div>
+    <div class="stats">
+      <div class="stat" id="stF" style="--sc:var(--fertility)"><span class="v" id="sF">0</span><span class="n">Fert</span><span class="d" id="dF"></span></div>
+      <div class="stat" id="stV" style="--sc:var(--vitality)"><span class="v" id="sV">0</span><span class="n">Vital</span><span class="d" id="dV"></span></div>
+      <div class="stat" id="stA" style="--sc:var(--adaptability)"><span class="v" id="sA">0</span><span class="n">Adapt</span><span class="d" id="dA"></span></div>
+    </div>
+  </div>
+  <div class="card" id="threatCard" hidden>
+    <div id="thIcon"></div>
+    <div id="thName"></div>
+    <div id="thCountWrap"><div id="thCount"></div><div id="thCountLbl"></div></div>
+    <div id="thSub"></div>
+    <div id="thFoot"><div id="pips"></div><span id="thDealt"></span><span id="thCounter"></span></div>
+  </div>
+</div>
+
+<button class="card" id="recenter" aria-label="Recenter">⌖</button>
+
+<div id="tray" class="card">
+  <div id="frontWrap"><canvas id="frontCv" width="136" height="136"></canvas></div>
+  <div id="info">
+    <div id="tName"></div>
+    <div id="tStat"></div>
+    <div id="nextRow"><span class="lbl">Next</span></div>
+  </div>
+  <div id="acts">
+    <button id="rotBtn">↻ Rotate</button>
+    <button id="placeBtn" disabled>Place</button>
+    <div id="dragHint" hidden>Drag tile<br>onto board</div>
+  </div>
+</div>
+
+<div id="scrim"></div>
+
+<div class="sheet card" id="setSheet">
+  <h3>Prototype settings</h3>
+  <div class="set"><span>Placement<small>How tiles get onto the board</small></span><div class="seg" data-key="placeMode"><button data-v="tap">Tap + confirm</button><button data-v="drag">Drag</button></div></div>
+  <div class="set"><span>Rotation<small>Can you rotate the front tile?</small></span><div class="seg" data-key="rotation"><button data-v="true">On</button><button data-v="false">Off</button></div></div>
+  <div class="set"><span>Queue size<small>Front tile + lookahead</small></span><div class="seg" data-key="queueSize"><button data-v="2">2</button><button data-v="3">3</button><button data-v="4">4</button></div></div>
+  <div class="set"><span>Match hints<small>Best possible score on each spot</small></span><div class="seg" data-key="hints"><button data-v="true">On</button><button data-v="false">Off</button></div></div>
+  <div class="set"><span>Threats<small>Off = Proto 1 placement toy</small></span><div class="seg" data-key="threats"><button data-v="true">On</button><button data-v="false">Off</button></div></div>
+  <div class="set"><span>Threat types<small>Applies from the next threat</small></span><div class="seg" data-multi="cats"><button data-v="predatory">🐾</button><button data-v="epidemic">🦠</button><button data-v="environmental">🌋</button></div></div>
+  <div class="set"><span>Sound</span><div class="seg" data-key="sound"><button data-v="true">On</button><button data-v="false">Off</button></div></div>
+  <div class="set"><span>Haptics<small>iOS 18+ Safari, Android</small></span><div class="seg" data-key="haptics"><button data-v="true">On</button><button data-v="false">Off</button></div></div>
+  <div class="set"><span>Seed</span><span class="dim" id="seedLbl"></span></div>
+  <div class="btnrow"><button class="btn" id="replayBtn">Replay seed</button><button class="btn" id="newBtn">New run</button></div>
+  <div class="btnrow"><button class="btn primary" data-close>Done</button></div>
+</div>
+
+<div class="sheet card" id="logSheet">
+  <h3>Run log</h3>
+  <div id="logList"></div>
+  <div class="btnrow"><button class="btn primary" data-close>Close</button></div>
+</div>
+
+<div class="overlay" id="modal"><div class="card" id="modalCard"></div></div>
+
+<label class="hapt"><input type="checkbox" switch id="haptSwitch"></label>
+
+<script>
+// =====================================================================
+// CONFIG — every tuning value lives here (mirrors PROTOTYPE_PLAN.md)
+// =====================================================================
+const CONFIG = {
+  // Tiles
+  biomes: ["Ocean", "Shallow", "Hydrothermal", "Shore", "Forest", "Desert"],
+  biomeStat: {
+    Ocean: "fertility",       Forest: "fertility",
+    Hydrothermal: "vitality", Desert: "vitality",
+    Shallow: "adaptability",  Shore: "adaptability",
+  },
+  relatedBiomes: {           // PLACEHOLDER pairings — tune freely
+    Ocean: ["Shallow", "Hydrothermal"],
+    Shallow: ["Ocean", "Shore"],
+    Hydrothermal: ["Ocean", "Desert"],
+    Shore: ["Shallow", "Forest"],
+    Forest: ["Shore", "Desert"],
+    Desert: ["Forest", "Hydrothermal"],
+  },
+  deckComposition: { pure: 0.50, split: 0.30, specialty: 0.15, chaos: 0.05 },
+  queueSize: 3,
+
+  // Scoring
+  basePlacementScore: 1,
+  perMatchedEdge: 1,
+  unmatchedEdgePenalty: 0,
+
+  // Stats / population
+  startingStats: { fertility: 0, vitality: 0, adaptability: 0 },
+  basePopulation: 50,
+  popPerFertility: 5,              // maxPop = 50 + fertility * 5
+  fertilityGrowsPopulation: true,  // PROTO ASSUMPTION: raising max also adds that many individuals
+  vitalityAbsorbPerPoint: 1,       // absorbed from the strike (resolution-turn) damage only
+  regenTierFactor: { THRIVING: 0.3, STABLE: 0.2, STRUGGLING: 0.1, CRITICAL: 0 },
+  tiers: { THRIVING: 75, STABLE: 50, STRUGGLING: 25, CRITICAL: 0 }, // % of max
+  individualsPerPop: 100,          // 1 pop point = 100 individuals
+
+  // Threats
+  horizonBaseTurns: 6,
+  horizonMinTurns: 1,
+  horizonSeverityScale: [0.6, 1.4],        // countdown = base * lerp(scale, severity position in range)
+  horizonStageShrink: { early: 0, mid: 1, late: 2 },
+  horizonLateShrinkEvery: 15,              // after late starts, -1 turn every N turns
+  stageTurns: { mid: 20, late: 50 },       // PROTO ASSUMPTION
+  severity: { early: [10, 25], mid: [25, 50], late: [50, 90] },
+  lateSeverityPerTurn: 0.6,                // unbounded ramp past the late threshold
+  threatGapTurns: 0,                       // quiet turns between resolution and next reveal
+  threatShapes: {                          // PROTO ASSUMPTION for epidemic vs environmental
+    predatory:     { curve: "spike", regenMult: 1 },   // all damage on resolution
+    epidemic:      { curve: "flat",  regenMult: 0.5 }, // even drain, halves regen while active
+    environmental: { curve: "ramp",  regenMult: 1 },   // grows each turn, regen unaffected
+  },
+
+  // Branch events (Proto 3 — unused here)
+  traitMomentEvery: 7,
+  statUnlockEvery: 20,
+
+  // Presentation
+  tileSize: 64,
+};
+
+// ---------------------------------------------------------------------
+// Presentation data
+// ---------------------------------------------------------------------
+const BIOME_COLOR = {
+  Ocean: "#2f6fb3", Shallow: "#56c1c9", Hydrothermal: "#b8465a",
+  Shore: "#ecdcae", Forest: "#4a9a58", Desert: "#e0a24c",
+};
+const BIOME_ADJ  = { Ocean: "Pelagic", Shallow: "Tidal", Hydrothermal: "Volcanic", Shore: "Coastal", Forest: "Wooded", Desert: "Arid" };
+const BIOME_SPEC = { Ocean: "Lagoon", Shallow: "Tidepool", Hydrothermal: "Vent", Shore: "Oasis", Forest: "Grove", Desert: "Dune" };
+const STAT = {
+  fertility:    { name: "Fertility",    short: "F", color: "#f28bb6" },
+  vitality:     { name: "Vitality",     short: "V", color: "#ff8a5c" },
+  adaptability: { name: "Adaptability", short: "A", color: "#5cc8e0" },
+};
+const CATS = {
+  predatory:     { icon: "🐾", label: "Predatory",     shape: "strikes all at once",        counter: "vitality" },
+  epidemic:      { icon: "🦠", label: "Epidemic",      shape: "drains each turn, slows regrowth", counter: "fertility" },
+  environmental: { icon: "🌋", label: "Environmental", shape: "grinds harder each turn",    counter: "adaptability" },
+};
+const THREAT_NAMES = {
+  predatory:     { early: ["Apex Predator Emerges", "Parasite Outbreak", "Territory Invasion"], mid: ["Pack Hunters", "Venomous Competitor"], late: ["Psychic Predator", "Crystalline Plague"] },
+  epidemic:      { early: ["Disease Outbreak", "Genetic Bottleneck", "Nesting Disruption"],    mid: ["Mutagenic Spore", "Sterility Pathogen"],   late: ["Memory Virus", "Entropy Cascade"] },
+  environmental: { early: ["Drought", "Volcanic Winter", "Ocean Acidification"],               mid: ["Toxic Bloom", "Resource Collapse"],       late: ["Gravity Shift", "Dimensional Leak"] },
+};
+const TIER_COLOR = { THRIVING: "#5fcf80", STABLE: "#e6c94f", STRUGGLING: "#ee8f3a", CRITICAL: "#e5484d", EXTINCT: "#666" };
+const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]]; // N E S W
+
+// ---------------------------------------------------------------------
+// Utils
+// ---------------------------------------------------------------------
+const $ = s => document.querySelector(s);
+const lerp = (a, b, t) => a + (b - a) * t;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const now = () => performance.now();
+const easeOutBack = t => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); };
+const easeOutCubic = t => 1 - Math.pow(1 - t, 3);
+const key = (x, y) => x + "," + y;
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const pick = (a, r) => a[Math.floor(r() * a.length)];
+function weighted(obj, r) { let tot = 0; for (const k in obj) tot += obj[k]; let x = r() * tot; for (const k in obj) { x -= obj[k]; if (x <= 0) return k; } return Object.keys(obj)[0]; }
+function shuffle(a, r) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function shade(hex, amt) { // amt -1..1 (neg = darker)
+  const n = parseInt(hex.slice(1), 16); let r = n >> 16, g = n >> 8 & 255, b = n & 255;
+  const t = amt < 0 ? 0 : 255, p = Math.abs(amt);
+  r = Math.round((t - r) * p + r); g = Math.round((t - g) * p + g); b = Math.round((t - b) * p + b);
+  return "rgb(" + r + "," + g + "," + b + ")";
+}
+const fmt = p => Math.max(0, Math.round(p * CONFIG.individualsPerPop)).toLocaleString("en-US");
+
+// ---------------------------------------------------------------------
+// Settings (persisted per device; URL params override)
+// ---------------------------------------------------------------------
+const DEFAULTS = { placeMode: "tap", rotation: true, queueSize: CONFIG.queueSize, hints: false, threats: true,
+  cats: { predatory: true, epidemic: true, environmental: true }, sound: true, haptics: true };
+let settings = structuredClone(DEFAULTS);
+try { Object.assign(settings, JSON.parse(localStorage.getItem("evolve.proto.settings") || "{}")); } catch (e) {}
+const Q = new URLSearchParams(location.search);
+if (Q.has("threats")) settings.threats = Q.get("threats") !== "0";
+if (Q.has("mode")) settings.placeMode = Q.get("mode") === "drag" ? "drag" : "tap";
+if (Q.has("queue")) settings.queueSize = clamp(+Q.get("queue") || 3, 2, 4);
+if (Q.has("rotation")) settings.rotation = Q.get("rotation") !== "0";
+function saveSettings() { try { localStorage.setItem("evolve.proto.settings", JSON.stringify(settings)); } catch (e) {} }
+
+// ---------------------------------------------------------------------
+// Feedback: sound + haptics
+// ---------------------------------------------------------------------
+let AC = null;
+function ac() {
+  if (!settings.sound) return null;
+  try {
+    if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)();
+    if (AC.state === "suspended") AC.resume();
+    return AC;
+  } catch (e) { return null; }
+}
+function tone(freq, dur, { type = "sine", gain = 0.12, delay = 0, slide = 0 } = {}) {
+  const a = ac(); if (!a) return;
+  const t = a.currentTime + delay, o = a.createOscillator(), g = a.createGain();
+  o.type = type; o.frequency.setValueAtTime(freq, t);
+  if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(20, freq * slide), t + dur);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + 0.008);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g).connect(a.destination); o.start(t); o.stop(t + dur + 0.02);
+}
+const PENTA = [523.25, 587.33, 659.25, 783.99, 880];
+const sfx = {
+  place(matches) { tone(180, 0.14, { type: "triangle", gain: 0.22, slide: 0.6 }); tone(360, 0.06, { gain: 0.05 });
+    for (let i = 0; i < matches; i++) tone(PENTA[i], 0.35, { gain: 0.07, delay: 0.07 + i * 0.07 }); },
+  rotate() { tone(1100, 0.03, { type: "square", gain: 0.025 }); },
+  select() { tone(700, 0.05, { gain: 0.04 }); },
+  hit(heavy) { tone(110, heavy ? 0.6 : 0.35, { gain: heavy ? 0.35 : 0.22, slide: 0.4 }); tone(60, 0.5, { type: "triangle", gain: 0.15, slide: 0.5 }); },
+  tick() { tone(240, 0.12, { type: "triangle", gain: 0.08, slide: 0.7 }); },
+  reveal() { tone(392, 0.25, { gain: 0.06 }); tone(311, 0.4, { gain: 0.06, delay: 0.12 }); },
+  survive() { [0, 2, 4].forEach((n, i) => tone(PENTA[n], 0.4, { gain: 0.06, delay: i * 0.09 })); },
+};
+const haptSwitch = document.getElementById("haptSwitch");
+function haptic(strength = "light") {
+  if (!settings.haptics) return;
+  if (navigator.vibrate) { navigator.vibrate(strength === "heavy" ? [25, 40, 35] : strength === "medium" ? 16 : 7); return; }
+  try { haptSwitch.parentElement.click(); } catch (e) {} // iOS 18+ switch-input haptic trick
+}
+
+// =====================================================================
+// Game state
+// =====================================================================
+let S = null;
+let ghost = null;      // { x, y } in tap mode
+let drag = null;       // tray-drag state
+let ghostAngle = 0;    // animated rotation (radians)
+const popups = [];     // floating world-space numbers
+
+function maxPop() { return CONFIG.basePopulation + S.stats.fertility * CONFIG.popPerFertility; }
+function tierOf(pop = S.pop, max = maxPop()) {
+  if (pop <= 0) return "EXTINCT";
+  const pct = pop / max * 100, T = CONFIG.tiers;
+  return pct >= T.THRIVING ? "THRIVING" : pct >= T.STABLE ? "STABLE" : pct >= T.STRUGGLING ? "STRUGGLING" : "CRITICAL";
+}
+function stageOf(turn) { return turn >= CONFIG.stageTurns.late ? "late" : turn >= CONFIG.stageTurns.mid ? "mid" : "early"; }
+function edgesOf(t) { const r = ((t.rot % 4) + 4) % 4; return [0, 1, 2, 3].map(i => t.base[(i - r + 4) % 4]); }
+function regenPerTurn() {
+  const shape = S.threat ? CONFIG.threatShapes[S.threat.cat] : null;
+  return S.stats.adaptability * (CONFIG.regenTierFactor[tierOf()] || 0) * (shape ? shape.regenMult : 1);
+}
+
+function newRun(seed) {
+  seed = seed ?? (Math.random() * 1e9) >>> 0;
+  S = {
+    seed, turn: 0, board: new Map(), valid: new Map(),
+    stats: { ...CONFIG.startingStats }, pop: CONFIG.basePopulation,
+    queue: [], nextId: 1,
+    deckRng: mulberry32(seed), threatRng: mulberry32(seed ^ 0x9e3779b9),
+    threat: null, gap: 0, threatsSurvived: 0, log: [], over: false, cause: null,
+    totalMatches: 0, bestGain: 0, damageTaken: 0, dispPop: CONFIG.basePopulation, lagPop: CONFIG.basePopulation, lagHold: 0,
+  };
+  S.dispPop = S.lagPop = S.pop;
+  ghost = null; drag = null; popups.length = 0;
+  refillQueue();
+  computeValid();
+  addLog(0, "A new lineage begins. Seed " + seed + ".");
+  if (settings.threats) spawnThreat(true);
+  cam.x = 0; cam.y = 0; cam.z = 1.15;
+  frontRotShown = null;
+  updateUI();
+}
+
+function makeTile() {
+  const r = S.deckRng, B = CONFIG.biomes;
+  const kind = weighted(CONFIG.deckComposition, r);
+  const p = pick(B, r);
+  let base, name, primary = p;
+  if (kind === "pure") { base = [p, p, p, p]; name = p; }
+  else if (kind === "split") { const o = pick(CONFIG.relatedBiomes[p], r); base = [p, p, o, o]; name = BIOME_ADJ[o] + " " + p; }
+  else if (kind === "specialty") { const o = pick(CONFIG.relatedBiomes[p], r); base = [p, p, p, o]; name = BIOME_SPEC[o] + " " + p; }
+  else { base = shuffle(B.slice(), r).slice(0, 4); primary = pick(base, r); name = "Crossroads " + primary; }
+  return { id: S.nextId++, kind, primary, base, rot: Math.floor(r() * 4), name };
+}
+function refillQueue() {
+  while (S.queue.length < settings.queueSize) S.queue.push(makeTile());
+  // Shrinking the queue hides lookahead but keeps the drawn order intact.
+}
+
+function computeValid() {
+  S.valid.clear();
+  if (S.board.size === 0) { S.valid.set(key(0, 0), { x: 0, y: 0 }); return; }
+  for (const t of S.board.values()) for (const [dx, dy] of DIRS) {
+    const x = t.x + dx, y = t.y + dy, k = key(x, y);
+    if (!S.board.has(k)) S.valid.set(k, { x, y });
+  }
+}
+
+function evaluate(x, y, edges) {
+  let matched = 0, missed = 0; const per = [null, null, null, null];
+  for (let i = 0; i < 4; i++) {
+    const n = S.board.get(key(x + DIRS[i][0], y + DIRS[i][1]));
+    if (!n) continue;
+    if (n.edges[(i + 2) % 4] === edges[i]) { matched++; per[i] = "match"; } else { missed++; per[i] = "miss"; }
+  }
+  const gain = Math.max(0, CONFIG.basePlacementScore + matched * CONFIG.perMatchedEdge - missed * CONFIG.unmatchedEdgePenalty);
+  return { matched, missed, per, gain };
+}
+function bestAt(x, y, t) {
+  if (!settings.rotation) return evaluate(x, y, edgesOf(t)).gain;
+  let best = 0;
+  for (let r = 0; r < 4; r++) best = Math.max(best, evaluate(x, y, edgesOf({ ...t, rot: r })).gain);
+  return best;
+}
+
+// ---------------------------------------------------------------------
+// Turn resolution
+// ---------------------------------------------------------------------
+function placeFront(x, y) {
+  if (S.over || modalOpen) return;
+  if (!S.valid.has(key(x, y))) return;
+  const t = S.queue[0], edges = edgesOf(t), ev = evaluate(x, y, edges);
+  const stat = CONFIG.biomeStat[t.primary];
+  S.board.set(key(x, y), { x, y, edges, primary: t.primary, placedAt: now(), per: ev.per });
+  const oldMax = maxPop();
+  S.stats[stat] += ev.gain;
+  if (stat === "fertility" && CONFIG.fertilityGrowsPopulation) S.pop += maxPop() - oldMax;
+  S.turn++;
+  S.totalMatches += ev.matched; S.bestGain = Math.max(S.bestGain, ev.gain);
+  popups.push({ wx: x * CONFIG.tileSize, wy: y * CONFIG.tileSize, text: "+" + ev.gain, sub: STAT[stat].name, color: STAT[stat].color, t0: now() });
+  bumpStat(stat);
+  sfx.place(ev.matched); haptic(ev.matched >= 3 ? "medium" : "light");
+
+  S.queue.shift(); refillQueue();
+  ghost = null; computeValid();
+
+  if (stageOf(S.turn) !== stageOf(S.turn - 1)) addLog(S.turn, "The world grows harsher — " + stageOf(S.turn) + " era begins.", true);
+
+  // Threat tick, then regen
+  let resolution = null;
+  if (settings.threats) resolution = advanceThreat();
+  const regen = regenPerTurn();
+  if (S.pop > 0) S.pop = Math.min(maxPop(), S.pop + regen);
+
+  if (S.pop <= 0) {
+    S.pop = 0; S.over = true;
+    S.cause = S.cause || (resolution ? resolution.threat : S.threat);
+    addLog(S.turn, "Extinction.", true);
+    haptic("heavy");
+    setTimeout(showGameOver, 900);
+  } else if (resolution) {
+    setTimeout(() => showResolution(resolution), 420);
+  }
+  updateUI();
+}
+
+function spawnThreat(first) {
+  const r = S.threatRng;
+  const cats = Object.keys(CATS).filter(c => settings.cats[c]);
+  if (!cats.length) cats.push("predatory");
+  let cat = pick(cats, r);
+  if (cats.length > 1 && S.lastCat === cat && r() < 0.6) cat = pick(cats.filter(c => c !== cat), r);
+  S.lastCat = cat;
+  const upcoming = S.turn + 1, stage = stageOf(upcoming), [lo, hi] = CONFIG.severity[stage];
+  const norm = r();
+  let severity = lo + norm * (hi - lo);
+  if (stage === "late") severity += (upcoming - CONFIG.stageTurns.late) * CONFIG.lateSeverityPerTurn;
+  severity = Math.round(severity);
+  let cd = Math.round(CONFIG.horizonBaseTurns * lerp(CONFIG.horizonSeverityScale[0], CONFIG.horizonSeverityScale[1], norm));
+  cd -= CONFIG.horizonStageShrink[stage];
+  if (stage === "late") cd -= Math.floor((upcoming - CONFIG.stageTurns.late) / CONFIG.horizonLateShrinkEvery);
+  cd = Math.max(CONFIG.horizonMinTurns, cd);
+  // Damage schedule across the countdown
+  const curve = CONFIG.threatShapes[cat].curve;
+  let w = [];
+  for (let i = 0; i < cd; i++) w.push(curve === "spike" ? (i === cd - 1 ? 1 : 0) : curve === "flat" ? 1 : i + 1);
+  const sum = w.reduce((a, b) => a + b, 0);
+  const ticks = w.map(v => severity * v / sum);
+  S.threat = { id: S.nextId++, cat, name: pick(THREAT_NAMES[cat][stage], r), stage, severity, norm, countdown: cd, remaining: cd, elapsed: 0, ticks, dealt: 0, blocked: 0, popBefore: S.pop, maxBefore: maxPop() };
+  addLog(S.turn, CATS[cat].icon + " On the horizon: " + S.threat.name + " (" + cd + " turns).");
+  if (!first) sfx.reveal();
+}
+
+function advanceThreat() {
+  if (!S.threat) {
+    if (S.gap > 0) S.gap--;
+    if (S.gap <= 0) spawnThreat();
+    return null;
+  }
+  const T = S.threat;
+  const tick = T.ticks[T.elapsed];
+  T.elapsed++; T.remaining--;
+  let dmg = tick, blocked = 0;
+  const striking = T.remaining <= 0;
+  if (striking) { blocked = Math.min(tick, S.stats.vitality * CONFIG.vitalityAbsorbPerPoint); dmg = tick - blocked; }
+  const before = S.pop;
+  S.pop = Math.max(0, S.pop - dmg);
+  const lost = before - S.pop;
+  T.dealt += lost; T.blocked += blocked; S.damageTaken += lost;
+  if (lost > 0.01) damageFx(lost, striking);
+  if (striking) {
+    const res = { threat: T, lost: T.dealt, blocked: T.blocked, strikeLost: lost };
+    addLog(S.turn, CATS[T.cat].icon + " " + T.name + " struck: −" + fmt(T.dealt) + " individuals" + (T.blocked ? " (Vitality blocked " + fmt(T.blocked) + ")" : "") + ".", true);
+    if (S.pop > 0) S.threatsSurvived++;
+    S.threat = null; S.gap = CONFIG.threatGapTurns;
+    if (S.pop > 0 && S.gap <= 0) spawnThreat();
+    return res;
+  }
+  return null;
+}
+
+function damageFx(lost, heavy) {
+  S.lagHold = now() + 350;
+  $("#popBar").classList.remove("hit"); void $("#popBar").offsetWidth; $("#popBar").classList.add("hit");
+  const f = $("#flash"); f.style.opacity = heavy ? 1 : 0.45; f.classList.add("on");
+  requestAnimationFrame(() => { f.classList.remove("on"); f.style.opacity = ""; });
+  shake = { t0: now(), dur: heavy ? 420 : 200, mag: heavy ? 9 : 3 };
+  const r = $("#popNum").getBoundingClientRect(), el = document.createElement("div");
+  el.className = "float"; el.style.color = "var(--CRITICAL)"; el.textContent = "−" + fmt(lost);
+  el.style.left = (r.right + 8) + "px"; el.style.top = (r.top) + "px";
+  document.body.appendChild(el); setTimeout(() => el.remove(), 1200);
+  if (heavy) { sfx.hit(true); haptic("heavy"); } else { sfx.tick(); haptic("light"); }
+}
+
+function rotateFront() {
+  if (!settings.rotation || S.over || modalOpen) return;
+  S.queue[0].rot++;
+  sfx.rotate(); haptic("light");
+  updateTray();
+}
+
+function addLog(turn, text, strong) { S.log.push({ turn, text, strong }); }
+
+// =====================================================================
+// Camera + input
+// =====================================================================
+const cv = $("#board"), ctx = cv.getContext("2d");
+const cam = { x: 0, y: 0, z: 1.15 };
+const view = { w: 0, h: 0, dpr: 1, cx: 0, cy: 0, top: 0, bottom: 0 };
+let shake = null, bgGrad = null;
+function resize() {
+  view.dpr = Math.min(3, window.devicePixelRatio || 1);
+  view.w = innerWidth; view.h = innerHeight;
+  cv.width = Math.round(view.w * view.dpr); cv.height = Math.round(view.h * view.dpr);
+  updateLayout();
+}
+function updateLayout() {
+  const hud = $("#hud").getBoundingClientRect(), tray = $("#tray").getBoundingClientRect();
+  view.top = hud.bottom; view.bottom = tray.top;
+  view.cx = view.w / 2; view.cy = (view.top + view.bottom) / 2;
+  $("#recenter").style.bottom = (view.h - tray.top + 10) + "px";
+  bgGrad = ctx.createRadialGradient(view.cx, view.cy, 20, view.cx, view.cy, Math.max(view.w, view.h) * 0.75);
+  bgGrad.addColorStop(0, "#182830"); bgGrad.addColorStop(1, "#0b1115");
+}
+const toWorld = (sx, sy) => [(sx - view.cx) / cam.z + cam.x, (sy - view.cy) / cam.z + cam.y];
+const toScreen = (wx, wy) => [(wx - cam.x) * cam.z + view.cx, (wy - cam.y) * cam.z + view.cy];
+const cellAt = (sx, sy) => { const [wx, wy] = toWorld(sx, sy); return [Math.round(wx / CONFIG.tileSize), Math.round(wy / CONFIG.tileSize)]; };
+function zoomAt(sx, sy, nz) {
+  nz = clamp(nz, 0.3, 2.6);
+  const [wx, wy] = toWorld(sx, sy);
+  cam.z = nz; cam.x = wx - (sx - view.cx) / nz; cam.y = wy - (sy - view.cy) / nz;
+}
+
+const ptrs = new Map(); let pinch = null, panMoved = false;
+cv.addEventListener("pointerdown", e => {
+  cv.setPointerCapture(e.pointerId);
+  ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, t: now() });
+  if (ptrs.size === 1) panMoved = false;
+  if (ptrs.size === 2) {
+    const [a, b] = [...ptrs.values()];
+    pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), z: cam.z, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
+    panMoved = true;
+  }
+});
+cv.addEventListener("pointermove", e => {
+  const p = ptrs.get(e.pointerId); if (!p) return;
+  const dx = e.clientX - p.x, dy = e.clientY - p.y;
+  p.x = e.clientX; p.y = e.clientY;
+  if (ptrs.size === 1) {
+    if (Math.hypot(p.x - p.sx, p.y - p.sy) > 7) panMoved = true;
+    if (panMoved) { cam.x -= dx / cam.z; cam.y -= dy / cam.z; }
+  } else if (ptrs.size === 2 && pinch) {
+    const [a, b] = [...ptrs.values()];
+    const d = Math.hypot(a.x - b.x, a.y - b.y), mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    cam.x -= (mx - pinch.mx) / cam.z; cam.y -= (my - pinch.my) / cam.z;
+    zoomAt(mx, my, pinch.z * d / pinch.d);
+    pinch.mx = mx; pinch.my = my;
+  }
+});
+function endPtr(e) {
+  const p = ptrs.get(e.pointerId); if (!p) return;
+  ptrs.delete(e.pointerId);
+  if (ptrs.size < 2) pinch = null;
+  if (ptrs.size === 0 && !panMoved && now() - p.t < 450 && e.type === "pointerup") onBoardTap(e.clientX, e.clientY);
+}
+cv.addEventListener("pointerup", endPtr);
+cv.addEventListener("pointercancel", endPtr);
+cv.addEventListener("wheel", e => { e.preventDefault(); zoomAt(e.clientX, e.clientY, cam.z * Math.exp(-e.deltaY * 0.0015)); }, { passive: false });
+document.addEventListener("gesturestart", e => e.preventDefault());
+
+function onBoardTap(sx, sy) {
+  if (S.over || modalOpen) return;
+  if (settings.placeMode !== "tap") return;
+  const [gx, gy] = cellAt(sx, sy), k = key(gx, gy);
+  if (ghost && ghost.x === gx && ghost.y === gy) { rotateFront(); return; }
+  if (S.valid.has(k)) {
+    ghost = { x: gx, y: gy };
+    ghostAngle = S.queue[0].rot * Math.PI / 2;
+    sfx.select(); haptic("light");
+  } else ghost = null;
+  updateTray();
+}
+
+// Tray: tap front tile = rotate; in drag mode, drag it onto the board.
+const frontWrap = $("#frontWrap");
+frontWrap.addEventListener("pointerdown", e => {
+  if (S.over || modalOpen) return;
+  frontWrap.setPointerCapture(e.pointerId);
+  drag = { id: e.pointerId, sx: e.clientX, sy: e.clientY, x: e.clientX, y: e.clientY, active: false, snap: null };
+});
+frontWrap.addEventListener("pointermove", e => {
+  if (!drag || drag.id !== e.pointerId) return;
+  drag.x = e.clientX; drag.y = e.clientY;
+  if (!drag.active && settings.placeMode === "drag" && Math.hypot(drag.x - drag.sx, drag.y - drag.sy) > 8) {
+    drag.active = true; frontWrap.classList.add("lifted");
+    ghostAngle = S.queue[0].rot * Math.PI / 2; haptic("light");
+  }
+  if (drag.active) {
+    const lift = 64;
+    const [wx, wy] = toWorld(drag.x, drag.y - lift);
+    const gx = Math.round(wx / CONFIG.tileSize), gy = Math.round(wy / CONFIG.tileSize);
+    const d = Math.hypot(wx - gx * CONFIG.tileSize, wy - gy * CONFIG.tileSize);
+    const prev = drag.snap;
+    drag.snap = S.valid.has(key(gx, gy)) && d < CONFIG.tileSize * 0.75 ? { x: gx, y: gy } : null;
+    if (drag.snap && (!prev || prev.x !== drag.snap.x || prev.y !== drag.snap.y)) { haptic("light"); sfx.rotate(); }
+    drag.wx = wx; drag.wy = wy;
+    updateTray();
+  }
+});
+function endDrag(e) {
+  if (!drag || drag.id !== e.pointerId) return;
+  const d = drag; drag = null; frontWrap.classList.remove("lifted");
+  if (d.active) { if (d.snap && e.type === "pointerup") placeFront(d.snap.x, d.snap.y); else updateTray(); }
+  else if (e.type === "pointerup") rotateFront();
+}
+frontWrap.addEventListener("pointerup", endDrag);
+frontWrap.addEventListener("pointercancel", endDrag);
+
+$("#rotBtn").onclick = rotateFront;
+$("#placeBtn").onclick = () => { if (ghost) placeFront(ghost.x, ghost.y); };
+$("#recenter").onclick = recenter;
+function recenter() {
+  if (!S.board.size) { cam.x = cam.y = 0; cam.z = 1.15; return; }
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+  for (const t of S.board.values()) { x0 = Math.min(x0, t.x); y0 = Math.min(y0, t.y); x1 = Math.max(x1, t.x); y1 = Math.max(y1, t.y); }
+  const T = CONFIG.tileSize, w = (x1 - x0 + 3) * T, h = (y1 - y0 + 3) * T;
+  camTarget = { x: (x0 + x1) / 2 * T, y: (y0 + y1) / 2 * T, z: clamp(Math.min(view.w / w, (view.bottom - view.top) / h), 0.3, 1.3) };
+}
+let camTarget = null;
+
+// =====================================================================
+// Rendering
+// =====================================================================
+function drawGlyph(c, stat, s) {
+  c.fillStyle = "rgba(255,255,255,.88)"; c.strokeStyle = "rgba(255,255,255,.88)";
+  c.lineWidth = s * 0.14; c.lineCap = "round";
+  if (stat === "fertility") {
+    const r = s * 0.16;
+    for (const [dx, dy] of [[0, -0.22], [-0.24, 0.18], [0.24, 0.18]]) { c.beginPath(); c.arc(dx * s, dy * s, r, 0, 7); c.fill(); }
+  } else if (stat === "vitality") {
+    const w = s * 0.42, h = s * 0.5;
+    c.beginPath(); c.moveTo(0, -h); c.lineTo(w, -h * 0.6); c.lineTo(w * 0.85, h * 0.2);
+    c.quadraticCurveTo(w * 0.5, h * 0.8, 0, h); c.quadraticCurveTo(-w * 0.5, h * 0.8, -w * 0.85, h * 0.2);
+    c.lineTo(-w, -h * 0.6); c.closePath(); c.fill();
+  } else {
+    const r = s * 0.34;
+    c.beginPath(); c.arc(0, 0, r, -0.3, Math.PI * 1.45); c.stroke();
+    const a = Math.PI * 1.45, ex = Math.cos(a) * r, ey = Math.sin(a) * r;
+    c.beginPath(); c.moveTo(ex + s * 0.2, ey - s * 0.02); c.lineTo(ex, ey); c.lineTo(ex + s * 0.03, ey + s * 0.2); c.stroke();
+  }
+}
+// Draws one tile centered at (x,y). edges are already in drawing orientation unless angle is given.
+function drawTile(c, edges, primary, x, y, size, { angle = 0, scale = 1, alpha = 1 } = {}) {
+  const h = size / 2;
+  c.save(); c.translate(x, y); if (scale !== 1) c.scale(scale, scale); if (angle) c.rotate(angle);
+  c.globalAlpha = alpha;
+  const P = [[-h, -h], [h, -h], [h, h], [-h, h]];
+  const tint = [0.1, 0, -0.1, 0];
+  for (let i = 0; i < 4; i++) {
+    const a = P[i], b = P[(i + 1) % 4];
+    c.beginPath(); c.moveTo(0, 0); c.lineTo(a[0], a[1]); c.lineTo(b[0], b[1]); c.closePath();
+    c.fillStyle = shade(BIOME_COLOR[edges[i]], tint[i]); c.fill();
+  }
+  c.strokeStyle = "rgba(0,0,0,.10)"; c.lineWidth = 1;
+  c.beginPath(); c.moveTo(-h, -h); c.lineTo(h, h); c.moveTo(h, -h); c.lineTo(-h, h); c.stroke();
+  const s = size * 0.42, r = s * 0.22;
+  c.beginPath(); c.roundRect(-s / 2, -s / 2, s, s, r);
+  c.fillStyle = BIOME_COLOR[primary]; c.fill();
+  c.lineWidth = size * 0.035; c.strokeStyle = shade(BIOME_COLOR[primary], -0.45); c.stroke();
+  if (angle) c.rotate(-angle);
+  drawGlyph(c, CONFIG.biomeStat[primary], s);
+  c.restore();
+}
+function edgeLine(c, x, y, i, inset) {
+  const h = CONFIG.tileSize / 2, P = [[-h, -h], [h, -h], [h, h], [-h, h]];
+  const a = P[i], b = P[(i + 1) % 4], ux = (b[0] - a[0]) / (2 * h), uy = (b[1] - a[1]) / (2 * h);
+  c.beginPath(); c.moveTo(x + a[0] + ux * inset, y + a[1] + uy * inset); c.lineTo(x + b[0] - ux * inset, y + b[1] - uy * inset); c.stroke();
+}
+function drawEdgeMarks(x, y, per, t) {
+  const pulse = 0.6 + 0.4 * Math.sin(t / 180);
+  for (let i = 0; i < 4; i++) {
+    if (!per[i]) continue;
+    if (per[i] === "match") {
+      ctx.save(); ctx.strokeStyle = "rgba(170,255,190," + pulse + ")"; ctx.lineWidth = 5; ctx.lineCap = "round";
+      ctx.shadowColor = "#7dffa0"; ctx.shadowBlur = 14; edgeLine(ctx, x, y, i, 6); ctx.restore();
+    } else {
+      ctx.save(); ctx.strokeStyle = "rgba(255,90,90,.85)"; ctx.lineWidth = 3; ctx.setLineDash([5, 5]); ctx.lineCap = "round";
+      edgeLine(ctx, x, y, i, 8); ctx.restore();
+    }
+  }
+}
+function currentPreview() {
+  if (S.over) return null;
+  if (drag && drag.active) return drag.snap ? { ...drag.snap, snapped: true } : { free: true };
+  if (ghost && settings.placeMode === "tap") return { ...ghost, snapped: true };
+  return null;
+}
+
+function frame() {
+  const t = now(), T = CONFIG.tileSize;
+  if (camTarget) {
+    cam.x = lerp(cam.x, camTarget.x, 0.15); cam.y = lerp(cam.y, camTarget.y, 0.15); cam.z = lerp(cam.z, camTarget.z, 0.15);
+    if (Math.abs(cam.z - camTarget.z) < 0.002 && Math.hypot(cam.x - camTarget.x, cam.y - camTarget.y) < 0.5) camTarget = null;
+    if (ptrs.size) camTarget = null;
+  }
+  const front = S.queue[0];
+  const targetAngle = front ? front.rot * Math.PI / 2 : 0;
+  ghostAngle = lerp(ghostAngle, targetAngle, 0.3);
+
+  ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
+  ctx.fillStyle = bgGrad || "#0e1519"; ctx.fillRect(0, 0, view.w, view.h);
+  let sx = 0, sy = 0;
+  if (shake) { const k = 1 - (t - shake.t0) / shake.dur; if (k > 0) { sx = (Math.random() * 2 - 1) * shake.mag * k; sy = (Math.random() * 2 - 1) * shake.mag * k; } else shake = null; }
+
+  ctx.save();
+  ctx.translate(view.cx + sx, view.cy + sy); ctx.scale(cam.z, cam.z); ctx.translate(-cam.x, -cam.y);
+
+  // Valid spots
+  const preview = currentPreview();
+  if (!S.over && front) {
+    const pulse = 0.14 + 0.06 * Math.sin(t / 400);
+    ctx.save(); ctx.setLineDash([6, 6]); ctx.lineWidth = 1.5 / Math.max(cam.z, 0.6);
+    for (const v of S.valid.values()) {
+      const x = v.x * T, y = v.y * T;
+      ctx.strokeStyle = "rgba(255,255,255," + pulse + ")";
+      ctx.beginPath(); ctx.roundRect(x - T / 2 + 5, y - T / 2 + 5, T - 10, T - 10, 8); ctx.stroke();
+      if (settings.hints) {
+        const g = bestAt(v.x, v.y, front);
+        ctx.fillStyle = g >= 3 ? "rgba(170,255,190,.8)" : "rgba(255,255,255,.35)";
+        ctx.font = "600 16px -apple-system,system-ui"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillText("+" + g, x, y);
+      }
+    }
+    ctx.restore();
+  }
+
+  // Tile shadows
+  ctx.fillStyle = "rgba(0,0,0,.35)";
+  for (const tile of S.board.values()) { const k = clamp((t - tile.placedAt) / 280, 0, 1); ctx.globalAlpha = k; ctx.fillRect(tile.x * T - T / 2 + 2, tile.y * T - T / 2 + 5, T, T); }
+  ctx.globalAlpha = 1;
+
+  // Tiles
+  for (const tile of S.board.values()) {
+    const k = clamp((t - tile.placedAt) / 300, 0, 1);
+    drawTile(ctx, tile.edges, tile.primary, tile.x * T, tile.y * T, T, { scale: lerp(0.55, 1, easeOutBack(k)), alpha: clamp(k * 3, 0, 1) });
+  }
+  // Seams where edges don't match
+  ctx.save(); ctx.strokeStyle = "rgba(8,12,15,.6)"; ctx.lineWidth = 2.2; ctx.lineCap = "round";
+  for (const tile of S.board.values()) for (const i of [1, 2]) {
+    const n = S.board.get(key(tile.x + DIRS[i][0], tile.y + DIRS[i][1]));
+    if (n && n.edges[(i + 2) % 4] !== tile.edges[i]) edgeLine(ctx, tile.x * T, tile.y * T, i, 0);
+  }
+  ctx.restore();
+  // Placement flashes: glow matched edges + ripple
+  for (const tile of S.board.values()) {
+    const age = t - tile.placedAt; if (age > 900) continue;
+    const k = age / 900, x = tile.x * T, y = tile.y * T;
+    ctx.save(); ctx.globalAlpha = 1 - k;
+    ctx.strokeStyle = "#bfffd0"; ctx.lineWidth = 5; ctx.lineCap = "round"; ctx.shadowColor = "#7dffa0"; ctx.shadowBlur = 18;
+    for (let i = 0; i < 4; i++) if (tile.per[i] === "match") edgeLine(ctx, x, y, i, 3);
+    ctx.shadowBlur = 0; ctx.strokeStyle = "rgba(255,255,255,.7)"; ctx.lineWidth = 2;
+    const g = easeOutCubic(k) * 22;
+    ctx.beginPath(); ctx.roundRect(x - T / 2 - g, y - T / 2 - g, T + g * 2, T + g * 2, 8 + g / 2); ctx.stroke();
+    ctx.restore();
+  }
+
+  // Ghost / dragged tile
+  let label = null;
+  if (preview && front) {
+    if (preview.snapped) {
+      const x = preview.x * T, y = preview.y * T;
+      const ev = evaluate(preview.x, preview.y, edgesOf(front));
+      ctx.save(); ctx.shadowColor = "rgba(0,0,0,.5)"; ctx.shadowBlur = 18; ctx.shadowOffsetY = 8;
+      drawTile(ctx, front.base, front.primary, x, y, T, { angle: ghostAngle, scale: 1.04, alpha: 0.95 });
+      ctx.restore();
+      const pa = 0.5 + 0.3 * Math.sin(t / 220);
+      ctx.save(); ctx.strokeStyle = "rgba(255,255,255," + pa + ")"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.roundRect(x - T / 2 - 3, y - T / 2 - 3, T + 6, T + 6, 6); ctx.stroke(); ctx.restore();
+      drawEdgeMarks(x, y, ev.per, t);
+      label = { wx: x, wy: y - T / 2, ev, stat: CONFIG.biomeStat[front.primary] };
+    }
+  }
+  ctx.restore();
+
+  // Free-floating drag tile (screen space, above finger)
+  if (drag && drag.active && !drag.snap) {
+    ctx.save(); ctx.shadowColor = "rgba(0,0,0,.5)"; ctx.shadowBlur = 22; ctx.shadowOffsetY = 12;
+    drawTile(ctx, front.base, front.primary, drag.x, drag.y - 64, T * cam.z * 1.08, { angle: ghostAngle, alpha: 0.92 });
+    ctx.restore();
+  }
+
+  // Preview label
+  if (label) {
+    const [lx, ly] = toScreen(label.wx, label.wy);
+    const txt = "+" + label.ev.gain + " " + STAT[label.stat].name;
+    const sub = label.ev.matched + " match" + (label.ev.matched === 1 ? "" : "es") + (label.ev.missed ? " · " + label.ev.missed + " miss" : "");
+    ctx.font = "700 14px -apple-system,system-ui"; const w1 = ctx.measureText(txt).width;
+    ctx.font = "500 11px -apple-system,system-ui"; const w2 = ctx.measureText(sub).width;
+    const w = Math.max(w1, w2) + 20, h = 38, bx = lx - w / 2, by = ly - h - 12;
+    ctx.fillStyle = "rgba(14,21,25,.92)"; ctx.beginPath(); ctx.roundRect(bx, by, w, h, 10); ctx.fill();
+    ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+    ctx.font = "700 14px -apple-system,system-ui"; ctx.fillStyle = STAT[label.stat].color; ctx.fillText(txt, lx, by + 17);
+    ctx.font = "500 11px -apple-system,system-ui"; ctx.fillStyle = "#8b9ca4"; ctx.fillText(sub, lx, by + 31);
+  }
+
+  // Floating gains
+  for (let i = popups.length - 1; i >= 0; i--) {
+    const p = popups[i], k = (t - p.t0) / 1100;
+    if (k >= 1) { popups.splice(i, 1); continue; }
+    const [px, py] = toScreen(p.wx, p.wy);
+    const yy = py - 10 - easeOutCubic(k) * 46;
+    ctx.globalAlpha = k < 0.7 ? 1 : 1 - (k - 0.7) / 0.3;
+    ctx.textAlign = "center"; ctx.font = "800 24px -apple-system,system-ui";
+    ctx.lineWidth = 4; ctx.strokeStyle = "rgba(0,0,0,.45)"; ctx.strokeText(p.text, px, yy);
+    ctx.fillStyle = p.color; ctx.fillText(p.text, px, yy);
+    ctx.font = "600 11px -apple-system,system-ui"; ctx.strokeText(p.sub, px, yy + 15); ctx.fillText(p.sub, px, yy + 15);
+    ctx.globalAlpha = 1;
+  }
+
+  animateHud(t);
+  requestAnimationFrame(frame);
+}
+
+// =====================================================================
+// HUD / UI
+// =====================================================================
+let shownPopText = "", frontRotShown = null, frontIdShown = null, threatIdShown = null;
+function animateHud(t) {
+  const max = maxPop();
+  S.dispPop = lerp(S.dispPop, S.pop, 0.12);
+  if (Math.abs(S.dispPop - S.pop) < 0.01) S.dispPop = S.pop;
+  if (S.lagPop < S.dispPop) S.lagPop = S.dispPop;
+  else if (t > S.lagHold) S.lagPop = lerp(S.lagPop, S.dispPop, 0.07);
+  $("#popFill").style.width = (clamp(S.dispPop / max, 0, 1) * 100) + "%";
+  $("#popLag").style.width = (clamp(S.lagPop / max, 0, 1) * 100) + "%";
+  const txt = fmt(S.dispPop);
+  if (txt !== shownPopText) { $("#popNum").textContent = txt; shownPopText = txt; }
+}
+function bumpStat(stat) {
+  const el = { fertility: "#stF", vitality: "#stV", adaptability: "#stA" }[stat];
+  $(el).classList.remove("bump"); void $(el).offsetWidth; $(el).classList.add("bump");
+}
+function updateUI() {
+  const max = maxPop(), tier = tierOf();
+  $("#turnLbl").innerHTML = "Turn <b>" + S.turn + "</b> · " + stageOf(S.turn + 1).replace(/^./, c => c.toUpperCase()) + " era";
+  $("#popMax").textContent = "/ " + fmt(max) + " individuals";
+  $("#tierPill").textContent = tier; $("#popCard").style.setProperty("--c", TIER_COLOR[tier]);
+  $("#sF").textContent = S.stats.fertility; $("#sV").textContent = S.stats.vitality; $("#sA").textContent = S.stats.adaptability;
+  $("#dF").textContent = "max " + fmt(max);
+  $("#dV").textContent = "blocks " + fmt(S.stats.vitality * CONFIG.vitalityAbsorbPerPoint);
+  const rg = regenPerTurn();
+  $("#dA").textContent = "+" + fmt(rg) + "/turn" + (tier === "CRITICAL" && S.stats.adaptability ? " ✕" : "");
+  renderThreat(); updateTray();
+  $("#seedLbl").textContent = S.seed;
+  requestAnimationFrame(updateLayout);
+}
+function renderThreat() {
+  const el = $("#threatCard");
+  if (!settings.threats || !S.threat || S.over) { el.hidden = true; threatIdShown = null; return; }
+  const T = S.threat, C = CATS[T.cat];
+  el.hidden = false;
+  if (threatIdShown !== T.id) { el.classList.remove("enter"); void el.offsetWidth; el.classList.add("enter"); threatIdShown = T.id; }
+  el.classList.toggle("urgent", T.remaining <= 1);
+  $("#thIcon").textContent = C.icon; $("#thName").textContent = T.name;
+  $("#thSub").textContent = C.label + " · " + C.shape;
+  $("#thCount").textContent = T.remaining; $("#thCountLbl").textContent = T.remaining === 1 ? "turn" : "turns";
+  const pips = $("#pips"); pips.innerHTML = "";
+  for (let i = 0; i < T.countdown; i++) {
+    const s = document.createElement("span");
+    if (i < T.elapsed) s.classList.add("done");
+    if (T.ticks[i] > 0 && T.cat !== "predatory") s.classList.add("dmg");
+    if (i === T.countdown - 1 && i >= T.elapsed) s.classList.add("strike");
+    pips.appendChild(s);
+  }
+  $("#thDealt").textContent = T.dealt > 0.01 ? "−" + fmt(T.dealt) : "";
+  const ctr = $("#thCounter"); ctr.textContent = STAT[C.counter].name; ctr.style.setProperty("--sc", STAT[C.counter].color);
+}
+function drawTileTo(canvas, edges, primary) {
+  const c = canvas.getContext("2d"), s = canvas.width;
+  c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, s, s);
+  c.save(); c.beginPath(); c.roundRect(0, 0, s, s, s * 0.08); c.clip();
+  drawTile(c, edges, primary, s / 2, s / 2, s);
+  c.restore();
+}
+function updateTray() {
+  const f = S.queue[0]; if (!f) return;
+  const fc = $("#frontCv");
+  if (frontIdShown !== f.id) {
+    drawTileTo(fc, f.base, f.primary);
+    fc.style.transition = "none"; fc.style.transform = "rotate(" + f.rot * 90 + "deg)"; void fc.offsetWidth; fc.style.transition = "";
+    frontWrap.classList.remove("pop"); void frontWrap.offsetWidth; frontWrap.classList.add("pop");
+    frontIdShown = f.id; frontRotShown = f.rot;
+  } else if (frontRotShown !== f.rot) { fc.style.transform = "rotate(" + f.rot * 90 + "deg)"; frontRotShown = f.rot; }
+  const stat = CONFIG.biomeStat[f.primary];
+  $("#tName").textContent = f.name;
+  $("#tStat").innerHTML = "Feeds <b style='--sc:" + STAT[stat].color + "'>" + STAT[stat].name + "</b> <span class='dim'>· " + f.kind + "</span>";
+  const nr = $("#nextRow"); [...nr.querySelectorAll("canvas")].forEach(c => c.remove());
+  for (let i = 1; i < Math.min(S.queue.length, settings.queueSize); i++) {
+    const c = document.createElement("canvas"); c.width = c.height = 60;
+    drawTileTo(c, edgesOf(S.queue[i]), S.queue[i].primary); nr.appendChild(c);
+  }
+  nr.style.display = settings.queueSize > 1 ? "" : "none";
+  const tap = settings.placeMode === "tap";
+  $("#rotBtn").hidden = !settings.rotation;
+  $("#placeBtn").hidden = !tap; $("#dragHint").hidden = tap;
+  $("#placeBtn").disabled = !(ghost && tap) || S.over;
+  $("#placeBtn").textContent = ghost && tap ? "Place ✓" : "Place";
+}
+
+// ---------------------------------------------------------------------
+// Sheets & overlays
+// ---------------------------------------------------------------------
+let modalOpen = false;
+function openSheet(id) { closeSheets(); $("#scrim").classList.add("on"); $(id).classList.add("open"); }
+function closeSheets() { document.querySelectorAll(".sheet").forEach(s => s.classList.remove("open")); if (!modalOpen) $("#scrim").classList.remove("on"); }
+$("#scrim").onclick = () => { if (!modalOpen) closeSheets(); };
+document.querySelectorAll("[data-close]").forEach(b => b.onclick = closeSheets);
+$("#setBtn").onclick = () => { syncSegs(); openSheet("#setSheet"); };
+$("#logBtn").onclick = () => {
+  $("#logList").innerHTML = S.log.slice().reverse().map(l => "<div" + (l.strong ? " style='font-weight:600'" : "") + "><span class='t'>T" + l.turn + "</span>" + l.text + "</div>").join("");
+  openSheet("#logSheet");
+};
+$("#helpBtn").onclick = showHelp;
+$("#newBtn").onclick = () => { closeSheets(); newRun(); };
+$("#replayBtn").onclick = () => { closeSheets(); newRun(S.seed); };
+
+function syncSegs() {
+  document.querySelectorAll(".seg[data-key]").forEach(seg => seg.querySelectorAll("button").forEach(b => b.classList.toggle("on", String(settings[seg.dataset.key]) === b.dataset.v)));
+  document.querySelectorAll(".seg[data-multi]").forEach(seg => seg.querySelectorAll("button").forEach(b => b.classList.toggle("on", !!settings.cats[b.dataset.v])));
+}
+document.querySelectorAll(".seg[data-key]").forEach(seg => seg.addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  const k = seg.dataset.key, v = b.dataset.v;
+  settings[k] = v === "true" ? true : v === "false" ? false : isNaN(+v) ? v : +v;
+  if (k === "queueSize") refillQueue();
+  if (k === "threats") { if (settings.threats && !S.threat && !S.over) spawnThreat(true); if (!settings.threats) S.threat = null; }
+  if (k === "placeMode") ghost = null;
+  saveSettings(); syncSegs(); updateUI();
+}));
+document.querySelectorAll(".seg[data-multi]").forEach(seg => seg.addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  settings.cats[b.dataset.v] = !settings.cats[b.dataset.v];
+  if (!Object.values(settings.cats).some(Boolean)) settings.cats[b.dataset.v] = true;
+  saveSettings(); syncSegs();
+}));
+
+function showModal(html, onClose) {
+  modalOpen = true; $("#scrim").classList.add("on");
+  $("#modalCard").innerHTML = html; $("#modal").classList.add("on");
+  const btn = $("#modalCard").querySelector("[data-ok]");
+  btn.onclick = () => { $("#modal").classList.remove("on"); modalOpen = false; $("#scrim").classList.remove("on"); if (onClose) onClose(); };
+  $("#modalCard").querySelectorAll("[data-alt]").forEach(b => b.onclick = () => { $("#modal").classList.remove("on"); modalOpen = false; $("#scrim").classList.remove("on"); b._fn && b._fn(); });
+  return $("#modalCard");
+}
+function severityWord(n) { return n < 0.34 ? "Mild" : n < 0.67 ? "Harsh" : "Brutal"; }
+function showResolution(res) {
+  const T = res.threat, C = CATS[T.cat];
+  const lucky = T.norm < 0.5, hurt = res.lost >= maxPop() * 0.25;
+  const verdict = lucky && !hurt ? "An easy season. Prepared, and the dice were kind."
+    : !lucky && !hurt ? "A brutal strike — but you were ready for it."
+    : lucky && hurt ? "Even a mild one hurt. You got away lightly this time."
+    : "A brutal strike, and you weren't ready.";
+  const next = S.threat ? "<p class='dim' style='margin-top:12px'>Next on the horizon: <b style='color:var(--text)'>" + CATS[S.threat.cat].icon + " " + S.threat.name + "</b> in " + S.threat.remaining + " turns.</p>" : "";
+  showModal(
+    "<div class='dim' style='font-size:12px;letter-spacing:.06em;text-transform:uppercase'>" + C.icon + " " + C.label + " resolved</div>" +
+    "<h2>" + T.name + "</h2>" +
+    "<div class='big' style='color:var(--CRITICAL)'>−" + fmt(res.lost) + "</div><div class='dim'>individuals lost</div>" +
+    "<div style='margin-top:12px'>" +
+    "<div class='kv'><span>Severity</span><span>" + fmt(T.severity) + " · " + severityWord(T.norm) + "</span></div>" +
+    (T.cat !== "predatory" ? "<div class='kv'><span>Drained before the strike</span><span>−" + fmt(T.dealt - res.strikeLost) + "</span></div>" : "") +
+    "<div class='kv'><span>Final strike</span><span>−" + fmt(res.strikeLost) + "</span></div>" +
+    "<div class='kv'><span>Vitality blocked</span><span style='color:var(--vitality)'>" + fmt(res.blocked) + "</span></div>" +
+    "<div class='kv'><span>Now</span><span style='color:" + TIER_COLOR[tierOf()] + "'>" + fmt(S.pop) + " · " + tierOf() + "</span></div>" +
+    "</div><div class='verdict'>" + verdict + "</div>" + next +
+    "<div class='btnrow'><button class='btn primary' data-ok>Continue</button></div>");
+  if (hurt) sfx.hit(false); else sfx.survive();
+  haptic(hurt ? "heavy" : "medium");
+}
+function showGameOver() {
+  const c = S.cause;
+  const avg = S.turn ? (S.totalMatches / S.turn).toFixed(2) : "0";
+  const card = showModal(
+    "<div class='dim' style='font-size:12px;letter-spacing:.06em;text-transform:uppercase'>Extinct</div>" +
+    "<div class='big'>" + S.turn + " turns</div><div class='dim'>survived</div>" +
+    (c ? "<p>Taken by <b>" + CATS[c.cat].icon + " " + c.name + "</b> (" + CATS[c.cat].label.toLowerCase() + ", severity " + fmt(c.severity) + ").</p>" : "") +
+    "<div style='margin-top:10px'>" +
+    "<div class='kv'><span>Threats survived</span><span>" + S.threatsSurvived + "</span></div>" +
+    "<div class='kv'><span>Final stats</span><span><b style='color:var(--fertility)'>F " + S.stats.fertility + "</b> · <b style='color:var(--vitality)'>V " + S.stats.vitality + "</b> · <b style='color:var(--adaptability)'>A " + S.stats.adaptability + "</b></span></div>" +
+    "<div class='kv'><span>Avg matched edges / tile</span><span>" + avg + "</span></div>" +
+    "<div class='kv'><span>Best single placement</span><span>+" + S.bestGain + "</span></div>" +
+    "<div class='kv'><span>Individuals lost overall</span><span>" + fmt(S.damageTaken) + "</span></div>" +
+    "<div class='kv'><span>Seed</span><span>" + S.seed + "</span></div>" +
+    "</div><div class='btnrow'><button class='btn' data-alt id='goReplay'>Replay seed</button><button class='btn primary' data-ok>New run</button></div>",
+    () => newRun());
+  card.querySelector("#goReplay")._fn = () => newRun(S.seed);
+}
+function showHelp() {
+  const legend = CONFIG.biomes.map(b => "<div><i style='background:" + BIOME_COLOR[b] + "'></i>" + b + " <span class='dim'>→ " + STAT[CONFIG.biomeStat[b]].short + "</span></div>").join("");
+  showModal(
+    "<h2>Evolve · prototype</h2><div class='help'><ul>" +
+    "<li>The <b>centre</b> of each tile is its biome. It decides which stat the tile grows.</li>" +
+    "<li>The four <b>edge triangles</b> should match their neighbours' facing edges: <b>+1</b> per match, up to +5 per tile.</li>" +
+    "<li><b style='color:var(--fertility)'>Fertility</b> raises your max population. <b style='color:var(--vitality)'>Vitality</b> blocks damage when a threat strikes. <b style='color:var(--adaptability)'>Adaptability</b> regrows each turn, but not while CRITICAL.</li>" +
+    "<li>You see <i>what</i> threat is coming and <i>when</i>, but not how hard it will hit.</li>" +
+    "<li>" + (settings.placeMode === "tap" ? "Tap a dashed spot to preview. Tap it again (or the tile) to rotate, then press <b>Place</b>." : "Drag the tile from the tray onto a dashed spot. Tap the tile to rotate.") + " Drag to pan, pinch to zoom.</li>" +
+    "</ul></div><div class='legend'>" + legend + "</div>" +
+    "<div class='btnrow'><button class='btn primary' data-ok>Begin</button></div>",
+    () => { try { localStorage.setItem("evolve.proto.help", "1"); } catch (e) {} });
+}
+
+// =====================================================================
+// Boot
+// =====================================================================
+addEventListener("resize", resize);
+resize();
+newRun(Q.has("seed") ? (+Q.get("seed") >>> 0) : undefined);
+requestAnimationFrame(frame);
+let seenHelp = false; try { seenHelp = localStorage.getItem("evolve.proto.help") === "1"; } catch (e) {}
+if (!seenHelp) showHelp();
+</script>
+</body>
+</html>
