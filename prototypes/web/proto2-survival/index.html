@@ -95,6 +95,21 @@ canvas#board{position:fixed;inset:0;width:100%;height:100%;touch-action:none;dis
 #placeBtn:disabled{opacity:.25}
 #acts button:active{transform:scale(.95)}
 #dragHint{font-size:11px;color:var(--dim);text-align:center;line-height:1.25;padding:4px 0}
+#tName .sw,#insTitle .sw{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:-1px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.3)}
+#tName .sub,#insTitle .sub{color:var(--dim);font-weight:500}
+#tName .sub{display:block;font-size:12px;margin-top:1px}
+#tName .dot{display:none}
+#inspect{position:fixed;left:10px;right:10px;margin:0 auto;max-width:460px;padding:12px 14px;opacity:0;transform:translateY(8px);pointer-events:none;transition:opacity .2s,transform .25s cubic-bezier(.2,1.3,.4,1)}
+#inspect.on{opacity:1;transform:none;pointer-events:auto}
+#insTitle{font-weight:650;font-size:15px;padding-right:30px}
+#insMeta{font-size:12px;color:var(--dim);margin:3px 0 8px}
+#insClose{position:absolute;top:8px;right:8px;width:28px;height:28px;border-radius:9px;background:var(--panel2);color:var(--dim)}
+#insEdges{display:grid;grid-template-columns:1fr 1fr;gap:5px 12px;font-size:12px}
+#insEdges div{display:flex;align-items:center;gap:6px}
+#insEdges .dir{color:var(--dim);width:12px;font-weight:600}
+#insEdges .sw{width:11px;height:11px;border-radius:3px}
+#insEdges .st{margin-left:auto;font-size:11px}
+.sect{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin:14px 0 2px}
 #recenter{position:fixed;right:14px;width:38px;height:38px;border-radius:12px;font-size:17px;color:var(--dim)}
 
 /* ---------- Overlays ---------- */
@@ -147,7 +162,7 @@ canvas#board{position:fixed;inset:0;width:100%;height:100%;touch-action:none;dis
       <div id="turnLbl">Turn <b>0</b> · Early era</div>
       <button class="iconbtn" id="helpBtn" aria-label="Help">?</button>
       <button class="iconbtn" id="logBtn" aria-label="Log">☰</button>
-      <button class="iconbtn" id="setBtn" aria-label="Settings">⚙︎</button>
+      <button class="iconbtn" id="setBtn" aria-label="Dev menu">🛠</button>
     </div>
     <div class="poprow">
       <span id="popNum">5,000</span><span id="popMax" class="dim">/ 5,000 individuals</span>
@@ -171,6 +186,13 @@ canvas#board{position:fixed;inset:0;width:100%;height:100%;touch-action:none;dis
 
 <button class="card" id="recenter" aria-label="Recenter">⌖</button>
 
+<div class="card" id="inspect">
+  <button id="insClose" aria-label="Close">✕</button>
+  <div id="insTitle"></div>
+  <div id="insMeta"></div>
+  <div id="insEdges"></div>
+</div>
+
 <div id="tray" class="card">
   <div id="frontWrap"><canvas id="frontCv" width="136" height="136"></canvas></div>
   <div id="info">
@@ -188,15 +210,21 @@ canvas#board{position:fixed;inset:0;width:100%;height:100%;touch-action:none;dis
 <div id="scrim"></div>
 
 <div class="sheet card" id="setSheet">
-  <h3>Prototype settings</h3>
+  <h3>Dev menu</h3>
+  <div class="sect">Visuals</div>
+  <div class="set"><span>Tile style<small>Square: centre block. Triangle: four full triangles.</small></span><div class="seg" data-key="tileStyle"><button data-v="square">Square</button><button data-v="triangle">Triangle</button></div></div>
+  <div class="sect">Placement</div>
   <div class="set"><span>Placement<small>How tiles get onto the board</small></span><div class="seg" data-key="placeMode"><button data-v="tap">Tap + confirm</button><button data-v="drag">Drag</button></div></div>
   <div class="set"><span>Rotation<small>Can you rotate the front tile?</small></span><div class="seg" data-key="rotation"><button data-v="true">On</button><button data-v="false">Off</button></div></div>
   <div class="set"><span>Queue size<small>Front tile + lookahead</small></span><div class="seg" data-key="queueSize"><button data-v="2">2</button><button data-v="3">3</button><button data-v="4">4</button></div></div>
   <div class="set"><span>Match hints<small>Best possible score on each spot</small></span><div class="seg" data-key="hints"><button data-v="true">On</button><button data-v="false">Off</button></div></div>
+  <div class="sect">Threats</div>
   <div class="set"><span>Threats<small>Off = Proto 1 placement toy</small></span><div class="seg" data-key="threats"><button data-v="true">On</button><button data-v="false">Off</button></div></div>
   <div class="set"><span>Threat types<small>Applies from the next threat</small></span><div class="seg" data-multi="cats"><button data-v="predatory">🐾</button><button data-v="epidemic">🦠</button><button data-v="environmental">🌋</button></div></div>
+  <div class="sect">Feedback</div>
   <div class="set"><span>Sound</span><div class="seg" data-key="sound"><button data-v="true">On</button><button data-v="false">Off</button></div></div>
   <div class="set"><span>Haptics<small>iOS 18+ Safari, Android</small></span><div class="seg" data-key="haptics"><button data-v="true">On</button><button data-v="false">Off</button></div></div>
+  <div class="sect">Run</div>
   <div class="set"><span>Seed</span><span class="dim" id="seedLbl"></span></div>
   <div class="btnrow"><button class="btn" id="replayBtn">Replay seed</button><button class="btn" id="newBtn">New run</button></div>
   <div class="btnrow"><button class="btn primary" data-close>Done</button></div>
@@ -281,8 +309,6 @@ const BIOME_COLOR = {
   Ocean: "#2f6fb3", Shallow: "#56c1c9", Hydrothermal: "#b8465a",
   Shore: "#ecdcae", Forest: "#4a9a58", Desert: "#e0a24c",
 };
-const BIOME_ADJ  = { Ocean: "Pelagic", Shallow: "Tidal", Hydrothermal: "Volcanic", Shore: "Coastal", Forest: "Wooded", Desert: "Arid" };
-const BIOME_SPEC = { Ocean: "Lagoon", Shallow: "Tidepool", Hydrothermal: "Vent", Shore: "Oasis", Forest: "Grove", Desert: "Dune" };
 const STAT = {
   fertility:    { name: "Fertility",    short: "F", color: "#f28bb6" },
   vitality:     { name: "Vitality",     short: "V", color: "#ff8a5c" },
@@ -326,7 +352,7 @@ const fmt = p => Math.max(0, Math.round(p * CONFIG.individualsPerPop)).toLocaleS
 // ---------------------------------------------------------------------
 // Settings (persisted per device; URL params override)
 // ---------------------------------------------------------------------
-const DEFAULTS = { placeMode: "tap", rotation: true, queueSize: CONFIG.queueSize, hints: false, threats: true,
+const DEFAULTS = { tileStyle: "square", placeMode: "tap", rotation: true, queueSize: CONFIG.queueSize, hints: false, threats: true,
   cats: { predatory: true, epidemic: true, environmental: true }, sound: true, haptics: true };
 let settings = structuredClone(DEFAULTS);
 try { Object.assign(settings, JSON.parse(localStorage.getItem("evolve.proto.settings") || "{}")); } catch (e) {}
@@ -335,6 +361,7 @@ if (Q.has("threats")) settings.threats = Q.get("threats") !== "0";
 if (Q.has("mode")) settings.placeMode = Q.get("mode") === "drag" ? "drag" : "tap";
 if (Q.has("queue")) settings.queueSize = clamp(+Q.get("queue") || 3, 2, 4);
 if (Q.has("rotation")) settings.rotation = Q.get("rotation") !== "0";
+if (Q.has("style")) settings.tileStyle = Q.get("style") === "triangle" ? "triangle" : "square";
 function saveSettings() { try { localStorage.setItem("evolve.proto.settings", JSON.stringify(settings)); } catch (e) {} }
 
 // ---------------------------------------------------------------------
@@ -383,6 +410,7 @@ let S = null;
 let ghost = null;      // { x, y } in tap mode
 let drag = null;       // tray-drag state
 let ghostAngle = 0;    // animated rotation (radians)
+let inspect = null;    // { x, y } of a placed tile being inspected
 const popups = [];     // floating world-space numbers
 
 function maxPop() { return CONFIG.basePopulation + S.stats.fertility * CONFIG.popPerFertility; }
@@ -409,7 +437,7 @@ function newRun(seed) {
     totalMatches: 0, bestGain: 0, damageTaken: 0, dispPop: CONFIG.basePopulation, lagPop: CONFIG.basePopulation, lagHold: 0,
   };
   S.dispPop = S.lagPop = S.pop;
-  ghost = null; drag = null; popups.length = 0;
+  ghost = null; drag = null; inspect = null; popups.length = 0;
   refillQueue();
   computeValid();
   addLog(0, "A new lineage begins. Seed " + seed + ".");
@@ -423,12 +451,22 @@ function makeTile() {
   const r = S.deckRng, B = CONFIG.biomes;
   const kind = weighted(CONFIG.deckComposition, r);
   const p = pick(B, r);
-  let base, name, primary = p;
-  if (kind === "pure") { base = [p, p, p, p]; name = p; }
-  else if (kind === "split") { const o = pick(CONFIG.relatedBiomes[p], r); base = [p, p, o, o]; name = BIOME_ADJ[o] + " " + p; }
-  else if (kind === "specialty") { const o = pick(CONFIG.relatedBiomes[p], r); base = [p, p, p, o]; name = BIOME_SPEC[o] + " " + p; }
-  else { base = shuffle(B.slice(), r).slice(0, 4); primary = pick(base, r); name = "Crossroads " + primary; }
-  return { id: S.nextId++, kind, primary, base, rot: Math.floor(r() * 4), name };
+  let base, primary = p;
+  if (kind === "pure") base = [p, p, p, p];
+  else if (kind === "split") { const o = pick(CONFIG.relatedBiomes[p], r); base = [p, p, o, o]; }
+  else if (kind === "specialty") { const o = pick(CONFIG.relatedBiomes[p], r); base = [p, p, p, o]; }
+  else { base = shuffle(B.slice(), r).slice(0, 4); primary = pick(base, r); }
+  return { id: S.nextId++, kind, primary, base, rot: Math.floor(r() * 4) };
+}
+// Main type first, then subtype: "Hydrothermal · Desert edges"
+const KIND_LABEL = { pure: "Pure", split: "Split", specialty: "Specialty", chaos: "Chaos" };
+function tileSub(t) {
+  if (t.kind === "pure") return "pure";
+  if (t.kind === "chaos") return "mixed edges";
+  return t.base.find(b => b !== t.primary) + " edge" + (t.kind === "split" ? "s" : "");
+}
+function tileTitleHTML(t) {
+  return "<span class='sw' style='background:" + BIOME_COLOR[t.primary] + "'></span>" + t.primary + " <span class='sub'><span class='dot'>· </span>" + tileSub(t) + "</span>";
 }
 function refillQueue() {
   while (S.queue.length < settings.queueSize) S.queue.push(makeTile());
@@ -469,7 +507,8 @@ function placeFront(x, y) {
   if (!S.valid.has(key(x, y))) return;
   const t = S.queue[0], edges = edgesOf(t), ev = evaluate(x, y, edges);
   const stat = CONFIG.biomeStat[t.primary];
-  S.board.set(key(x, y), { x, y, edges, primary: t.primary, placedAt: now(), per: ev.per });
+  S.board.set(key(x, y), { x, y, edges, primary: t.primary, base: t.base, kind: t.kind, turn: S.turn + 1, gain: ev.gain, placedAt: now(), per: ev.per });
+  inspect = null;
   const oldMax = maxPop();
   S.stats[stat] += ev.gain;
   if (stat === "fertility" && CONFIG.fertilityGrowsPopulation) S.pop += maxPop() - oldMax;
@@ -647,9 +686,16 @@ cv.addEventListener("wheel", e => { e.preventDefault(); zoomAt(e.clientX, e.clie
 document.addEventListener("gesturestart", e => e.preventDefault());
 
 function onBoardTap(sx, sy) {
-  if (S.over || modalOpen) return;
-  if (settings.placeMode !== "tap") return;
+  if (modalOpen) return;
   const [gx, gy] = cellAt(sx, sy), k = key(gx, gy);
+  // Placed tile → inspect it (works in both placement modes, and after extinction)
+  if (S.board.has(k)) {
+    inspect = inspect && inspect.x === gx && inspect.y === gy ? null : { x: gx, y: gy };
+    ghost = null; sfx.select(); haptic("light");
+    updateTray(); renderInspect(); return;
+  }
+  inspect = null; renderInspect();
+  if (S.over || settings.placeMode !== "tap") { updateTray(); return; }
   if (ghost && ghost.x === gx && ghost.y === gy) { rotateFront(); return; }
   if (S.valid.has(k)) {
     ghost = { x: gx, y: gy };
@@ -658,6 +704,26 @@ function onBoardTap(sx, sy) {
   } else ghost = null;
   updateTray();
 }
+
+const DIR_NAME = ["N", "E", "S", "W"];
+function renderInspect() {
+  const el = $("#inspect");
+  const t = inspect && S.board.get(key(inspect.x, inspect.y));
+  if (!t) { el.classList.remove("on"); return; }
+  const stat = CONFIG.biomeStat[t.primary];
+  $("#insTitle").innerHTML = tileTitleHTML(t);
+  $("#insMeta").innerHTML = "Feeds <b style='color:" + STAT[stat].color + "'>" + STAT[stat].name + "</b> · " + KIND_LABEL[t.kind] + " tile · placed turn " + t.turn + " · scored +" + t.gain;
+  $("#insEdges").innerHTML = t.edges.map((b, i) => {
+    const n = S.board.get(key(t.x + DIRS[i][0], t.y + DIRS[i][1]));
+    const st = !n ? "<span class='st dim'>open</span>"
+      : n.edges[(i + 2) % 4] === b ? "<span class='st' style='color:#7dffa0'>✓ match</span>"
+      : "<span class='st' style='color:#ff7a7a'>✕ " + n.edges[(i + 2) % 4] + "</span>";
+    return "<div><span class='dir'>" + DIR_NAME[i] + "</span><span class='sw' style='background:" + BIOME_COLOR[b] + "'></span>" + b + st + "</div>";
+  }).join("");
+  el.style.bottom = (view.h - $("#tray").getBoundingClientRect().top + 10) + "px";
+  el.classList.add("on");
+}
+$("#insClose").onclick = () => { inspect = null; renderInspect(); };
 
 // Tray: tap front tile = rotate; in drag mode, drag it onto the board.
 const frontWrap = $("#frontWrap");
@@ -671,6 +737,7 @@ frontWrap.addEventListener("pointermove", e => {
   drag.x = e.clientX; drag.y = e.clientY;
   if (!drag.active && settings.placeMode === "drag" && Math.hypot(drag.x - drag.sx, drag.y - drag.sy) > 8) {
     drag.active = true; frontWrap.classList.add("lifted");
+    inspect = null; renderInspect();
     ghostAngle = S.queue[0].rot * Math.PI / 2; haptic("light");
   }
   if (drag.active) {
@@ -741,6 +808,17 @@ function drawTile(c, edges, primary, x, y, size, { angle = 0, scale = 1, alpha =
   }
   c.strokeStyle = "rgba(0,0,0,.10)"; c.lineWidth = 1;
   c.beginPath(); c.moveTo(-h, -h); c.lineTo(h, h); c.moveTo(h, -h); c.lineTo(-h, h); c.stroke();
+  if (settings.tileStyle === "triangle") {
+    // Four full triangles carry the look; primary is a small badge at the apex.
+    const br = size * 0.17;
+    c.beginPath(); c.arc(0, 0, br, 0, Math.PI * 2);
+    c.fillStyle = BIOME_COLOR[primary]; c.fill();
+    c.lineWidth = size * 0.03; c.strokeStyle = "rgba(255,255,255,.85)"; c.stroke();
+    if (angle) c.rotate(-angle);
+    drawGlyph(c, CONFIG.biomeStat[primary], br * 1.25);
+    c.restore();
+    return;
+  }
   const s = size * 0.42, r = s * 0.22;
   c.beginPath(); c.roundRect(-s / 2, -s / 2, s, s, r);
   c.fillStyle = BIOME_COLOR[primary]; c.fill();
@@ -842,6 +920,18 @@ function frame() {
     ctx.restore();
   }
 
+  // Inspected tile: outline + live match state of each edge
+  const ins = inspect && S.board.get(key(inspect.x, inspect.y));
+  if (ins) {
+    const x = ins.x * T, y = ins.y * T;
+    ctx.save(); ctx.strokeStyle = "rgba(255,255,255," + (0.65 + 0.3 * Math.sin(t / 220)) + ")"; ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.roundRect(x - T / 2 - 3, y - T / 2 - 3, T + 6, T + 6, 6); ctx.stroke(); ctx.restore();
+    drawEdgeMarks(x, y, ins.edges.map((b, i) => {
+      const n = S.board.get(key(ins.x + DIRS[i][0], ins.y + DIRS[i][1]));
+      return !n ? null : n.edges[(i + 2) % 4] === b ? "match" : "miss";
+    }), t);
+  }
+
   // Ghost / dragged tile
   let label = null;
   if (preview && front) {
@@ -928,7 +1018,7 @@ function updateUI() {
   $("#dV").textContent = "blocks " + fmt(S.stats.vitality * CONFIG.vitalityAbsorbPerPoint);
   const rg = regenPerTurn();
   $("#dA").textContent = "+" + fmt(rg) + "/turn" + (tier === "CRITICAL" && S.stats.adaptability ? " ✕" : "");
-  renderThreat(); updateTray();
+  renderThreat(); updateTray(); renderInspect();
   $("#seedLbl").textContent = S.seed;
   requestAnimationFrame(updateLayout);
 }
@@ -970,8 +1060,8 @@ function updateTray() {
     frontIdShown = f.id; frontRotShown = f.rot;
   } else if (frontRotShown !== f.rot) { fc.style.transform = "rotate(" + f.rot * 90 + "deg)"; frontRotShown = f.rot; }
   const stat = CONFIG.biomeStat[f.primary];
-  $("#tName").textContent = f.name;
-  $("#tStat").innerHTML = "Feeds <b style='--sc:" + STAT[stat].color + "'>" + STAT[stat].name + "</b> <span class='dim'>· " + f.kind + "</span>";
+  $("#tName").innerHTML = tileTitleHTML(f);
+  $("#tStat").innerHTML = "Feeds <b style='--sc:" + STAT[stat].color + "'>" + STAT[stat].name + "</b>";
   const nr = $("#nextRow"); [...nr.querySelectorAll("canvas")].forEach(c => c.remove());
   for (let i = 1; i < Math.min(S.queue.length, settings.queueSize); i++) {
     const c = document.createElement("canvas"); c.width = c.height = 60;
@@ -1013,6 +1103,7 @@ document.querySelectorAll(".seg[data-key]").forEach(seg => seg.addEventListener(
   if (k === "queueSize") refillQueue();
   if (k === "threats") { if (settings.threats && !S.threat && !S.over) spawnThreat(true); if (!settings.threats) S.threat = null; }
   if (k === "placeMode") ghost = null;
+  if (k === "tileStyle") frontIdShown = null;
   saveSettings(); syncSegs(); updateUI();
 }));
 document.querySelectorAll(".seg[data-multi]").forEach(seg => seg.addEventListener("click", e => {
