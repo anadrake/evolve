@@ -106,7 +106,7 @@ canvas#board{position:fixed;inset:0;width:100%;height:100%;touch-action:none;dis
 #insClose{position:absolute;top:8px;right:8px;width:28px;height:28px;border-radius:9px;background:var(--panel2);color:var(--dim)}
 #insEdges{display:grid;grid-template-columns:1fr 1fr;gap:5px 12px;font-size:12px}
 #insEdges div{display:flex;align-items:center;gap:6px}
-#insEdges .dir{color:var(--dim);width:12px;font-weight:600}
+#insEdges .dir{color:var(--dim);min-width:12px;font-weight:600}
 #insEdges .sw{width:11px;height:11px;border-radius:3px}
 #insEdges .st{margin-left:auto;font-size:11px}
 .sect{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);margin:14px 0 2px}
@@ -212,7 +212,7 @@ canvas#board{position:fixed;inset:0;width:100%;height:100%;touch-action:none;dis
 <div class="sheet card" id="setSheet">
   <h3>Dev menu</h3>
   <div class="sect">Visuals</div>
-  <div class="set"><span>Tile style<small>Square: centre block. Triangle: four full triangles.</small></span><div class="seg" data-key="tileStyle"><button data-v="square">Square</button><button data-v="triangle">Triangle</button></div></div>
+  <div class="set"><span>Grid<small>Triangle: 3 edges, 3 neighbours, max +4. Switching starts a new run.</small></span><div class="seg" data-key="grid"><button data-v="square">Square</button><button data-v="triangle">Triangle</button></div></div>
   <div class="sect">Placement</div>
   <div class="set"><span>Placement<small>How tiles get onto the board</small></span><div class="seg" data-key="placeMode"><button data-v="tap">Tap + confirm</button><button data-v="drag">Drag</button></div></div>
   <div class="set"><span>Rotation<small>Can you rotate the front tile?</small></span><div class="seg" data-key="rotation"><button data-v="true">On</button><button data-v="false">Off</button></div></div>
@@ -299,7 +299,8 @@ const CONFIG = {
   statUnlockEvery: 20,
 
   // Presentation
-  tileSize: 64,
+  tileSize: 64,   // square side
+  triSide: 96,    // triangle side (roughly the same area as a square tile)
 };
 
 // ---------------------------------------------------------------------
@@ -325,7 +326,47 @@ const THREAT_NAMES = {
   environmental: { early: ["Drought", "Volcanic Winter", "Ocean Acidification"],               mid: ["Toxic Bloom", "Resource Collapse"],       late: ["Gravity Shift", "Dimensional Leak"] },
 };
 const TIER_COLOR = { THRIVING: "#5fcf80", STABLE: "#e6c94f", STRUGGLING: "#ee8f3a", CRITICAL: "#e5484d", EXTINCT: "#666" };
-const DIRS = [[0, -1], [1, 0], [0, 1], [-1, 0]]; // N E S W
+
+// ---------------------------------------------------------------------
+// Grid geometry. Square: 4 edges. Triangle: 3 edges, cells alternate up/down.
+// Edges are indexed clockwise; edge i runs from verts[i] to verts[i+1].
+// neighbor(x, y, i) -> [nx, ny, j] where j is the neighbour's facing edge.
+// ---------------------------------------------------------------------
+const SQ = CONFIG.tileSize, TRI = CONFIG.triSide, TRI_H = TRI * Math.sqrt(3) / 2;
+const GRIDS = {
+  square: {
+    n: 4, step: Math.PI / 2, reach: SQ, innerScale: 0.42, glyphK: 0.594,
+    center: (x, y) => [x * SQ, y * SQ],
+    verts: () => { const h = SQ / 2; return [[-h, -h], [h, -h], [h, h], [-h, h]]; },
+    neighbor: (x, y, i) => { const d = [[0, -1], [1, 0], [0, 1], [-1, 0]][i]; return [x + d[0], y + d[1], (i + 2) % 4]; },
+    cellAt: (wx, wy) => [Math.round(wx / SQ), Math.round(wy / SQ)],
+    dirNames: () => ["N", "E", "S", "W"],
+  },
+  triangle: {
+    n: 3, step: Math.PI * 2 / 3, reach: TRI * 0.62, innerScale: 0.5, glyphK: 0.4,
+    up: (x, y) => (((x + y) % 2) + 2) % 2 === 0,
+    center(x, y) { return [(x + 1) * TRI / 2, y * TRI_H + (this.up(x, y) ? 2 : 1) * TRI_H / 3]; },
+    verts(x, y) { const s = TRI / 2, a = TRI_H / 3; return this.up(x, y) ? [[0, -2 * a], [s, a], [-s, a]] : [[-s, -a], [s, -a], [0, 2 * a]]; },
+    neighbor(x, y, i) { return (this.up(x, y) ? [[x + 1, y, 2], [x, y + 1, 0], [x - 1, y, 1]] : [[x, y - 1, 1], [x + 1, y, 2], [x - 1, y, 0]])[i]; },
+    cellAt(wx, wy) {
+      const r = Math.floor(wy / TRI_H), c0 = Math.floor(wx / (TRI / 2));
+      for (let c = c0 - 2; c <= c0 + 1; c++) if (inPoly(wx, wy, this.center(c, r), this.verts(c, r))) return [c, r];
+      return [c0, r];
+    },
+    dirNames(x, y) { return this.up(x, y) ? ["Right", "Bottom", "Left"] : ["Top", "Right", "Left"]; },
+  },
+};
+let GRID = GRIDS.square;
+function inPoly(px, py, [cx, cy], vs) {
+  let sign = 0;
+  for (let i = 0; i < vs.length; i++) {
+    const a = vs[i], b = vs[(i + 1) % vs.length];
+    const cr = Math.sign((b[0] - a[0]) * (py - cy - a[1]) - (b[1] - a[1]) * (px - cx - a[0]));
+    if (cr) { if (sign && cr !== sign) return false; sign = cr; }
+  }
+  return true;
+}
+const scaleVerts = (vs, k) => vs.map(([x, y]) => [x * k, y * k]);
 
 // ---------------------------------------------------------------------
 // Utils
@@ -352,7 +393,7 @@ const fmt = p => Math.max(0, Math.round(p * CONFIG.individualsPerPop)).toLocaleS
 // ---------------------------------------------------------------------
 // Settings (persisted per device; URL params override)
 // ---------------------------------------------------------------------
-const DEFAULTS = { tileStyle: "square", placeMode: "tap", rotation: true, queueSize: CONFIG.queueSize, hints: false, threats: true,
+const DEFAULTS = { grid: "square", placeMode: "tap", rotation: true, queueSize: CONFIG.queueSize, hints: false, threats: true,
   cats: { predatory: true, epidemic: true, environmental: true }, sound: true, haptics: true };
 let settings = structuredClone(DEFAULTS);
 try { Object.assign(settings, JSON.parse(localStorage.getItem("evolve.proto.settings") || "{}")); } catch (e) {}
@@ -361,7 +402,9 @@ if (Q.has("threats")) settings.threats = Q.get("threats") !== "0";
 if (Q.has("mode")) settings.placeMode = Q.get("mode") === "drag" ? "drag" : "tap";
 if (Q.has("queue")) settings.queueSize = clamp(+Q.get("queue") || 3, 2, 4);
 if (Q.has("rotation")) settings.rotation = Q.get("rotation") !== "0";
-if (Q.has("style")) settings.tileStyle = Q.get("style") === "triangle" ? "triangle" : "square";
+if (Q.has("grid") || Q.has("style")) settings.grid = Q.get("grid") || Q.get("style");
+if (settings.grid !== "triangle") settings.grid = "square";
+delete settings.tileStyle;
 function saveSettings() { try { localStorage.setItem("evolve.proto.settings", JSON.stringify(settings)); } catch (e) {} }
 
 // ---------------------------------------------------------------------
@@ -420,7 +463,7 @@ function tierOf(pop = S.pop, max = maxPop()) {
   return pct >= T.THRIVING ? "THRIVING" : pct >= T.STABLE ? "STABLE" : pct >= T.STRUGGLING ? "STRUGGLING" : "CRITICAL";
 }
 function stageOf(turn) { return turn >= CONFIG.stageTurns.late ? "late" : turn >= CONFIG.stageTurns.mid ? "mid" : "early"; }
-function edgesOf(t) { const r = ((t.rot % 4) + 4) % 4; return [0, 1, 2, 3].map(i => t.base[(i - r + 4) % 4]); }
+function edgesOf(t) { const n = t.base.length, r = ((t.rot % n) + n) % n; return t.base.map((_, i) => t.base[(i - r + n) % n]); }
 function regenPerTurn() {
   const shape = S.threat ? CONFIG.threatShapes[S.threat.cat] : null;
   return S.stats.adaptability * (CONFIG.regenTierFactor[tierOf()] || 0) * (shape ? shape.regenMult : 1);
@@ -428,6 +471,7 @@ function regenPerTurn() {
 
 function newRun(seed) {
   seed = seed ?? (Math.random() * 1e9) >>> 0;
+  GRID = GRIDS[settings.grid];
   S = {
     seed, turn: 0, board: new Map(), valid: new Map(),
     stats: { ...CONFIG.startingStats }, pop: CONFIG.basePopulation,
@@ -442,28 +486,31 @@ function newRun(seed) {
   computeValid();
   addLog(0, "A new lineage begins. Seed " + seed + ".");
   if (settings.threats) spawnThreat(true);
-  cam.x = 0; cam.y = 0; cam.z = 1.15;
-  frontRotShown = null;
+  [cam.x, cam.y] = GRID.center(0, 0); cam.z = 1.15;
+  frontRotShown = null; frontIdShown = null;
   updateUI();
 }
 
 function makeTile() {
-  const r = S.deckRng, B = CONFIG.biomes;
+  const r = S.deckRng, B = CONFIG.biomes, n = GRID.n;
   const kind = weighted(CONFIG.deckComposition, r);
-  const p = pick(B, r);
+  const p = pick(B, r), rel = CONFIG.relatedBiomes[p];
   let base, primary = p;
-  if (kind === "pure") base = [p, p, p, p];
-  else if (kind === "split") { const o = pick(CONFIG.relatedBiomes[p], r); base = [p, p, o, o]; }
-  else if (kind === "specialty") { const o = pick(CONFIG.relatedBiomes[p], r); base = [p, p, p, o]; }
-  else { base = shuffle(B.slice(), r).slice(0, 4); primary = pick(base, r); }
-  return { id: S.nextId++, kind, primary, base, rot: Math.floor(r() * 4) };
+  if (kind === "pure") base = Array(n).fill(p);
+  else if (kind === "split") { const o = pick(rel, r); base = n === 4 ? [p, p, o, o] : [p, p, o]; }
+  // Triangle specialty bridges both related biomes, since [p, p, o] is already the split.
+  else if (kind === "specialty") { const o = pick(rel, r); base = n === 4 ? [p, p, p, o] : [p, rel[0], rel[1]]; }
+  else { base = shuffle(B.slice(), r).slice(0, n); primary = pick(base, r); }
+  return { id: S.nextId++, kind, primary, base, rot: Math.floor(r() * n) };
 }
 // Main type first, then subtype: "Hydrothermal · Desert edges"
 const KIND_LABEL = { pure: "Pure", split: "Split", specialty: "Specialty", chaos: "Chaos" };
 function tileSub(t) {
-  if (t.kind === "pure") return "pure";
-  if (t.kind === "chaos") return "mixed edges";
-  return t.base.find(b => b !== t.primary) + " edge" + (t.kind === "split" ? "s" : "");
+  const others = t.base.filter(b => b !== t.primary), distinct = [...new Set(others)];
+  if (!others.length) return "pure";
+  if (distinct.length === 1) return distinct[0] + " edge" + (others.length > 1 ? "s" : "");
+  if (distinct.length === 2) return distinct.join(" + ") + " edges";
+  return "mixed edges";
 }
 function tileTitleHTML(t) {
   return "<span class='sw' style='background:" + BIOME_COLOR[t.primary] + "'></span>" + t.primary + " <span class='sub'><span class='dot'>· </span>" + tileSub(t) + "</span>";
@@ -476,18 +523,18 @@ function refillQueue() {
 function computeValid() {
   S.valid.clear();
   if (S.board.size === 0) { S.valid.set(key(0, 0), { x: 0, y: 0 }); return; }
-  for (const t of S.board.values()) for (const [dx, dy] of DIRS) {
-    const x = t.x + dx, y = t.y + dy, k = key(x, y);
+  for (const t of S.board.values()) for (let i = 0; i < GRID.n; i++) {
+    const [x, y] = GRID.neighbor(t.x, t.y, i), k = key(x, y);
     if (!S.board.has(k)) S.valid.set(k, { x, y });
   }
 }
 
 function evaluate(x, y, edges) {
-  let matched = 0, missed = 0; const per = [null, null, null, null];
-  for (let i = 0; i < 4; i++) {
-    const n = S.board.get(key(x + DIRS[i][0], y + DIRS[i][1]));
+  let matched = 0, missed = 0; const per = edges.map(() => null);
+  for (let i = 0; i < edges.length; i++) {
+    const [nx, ny, j] = GRID.neighbor(x, y, i), n = S.board.get(key(nx, ny));
     if (!n) continue;
-    if (n.edges[(i + 2) % 4] === edges[i]) { matched++; per[i] = "match"; } else { missed++; per[i] = "miss"; }
+    if (n.edges[j] === edges[i]) { matched++; per[i] = "match"; } else { missed++; per[i] = "miss"; }
   }
   const gain = Math.max(0, CONFIG.basePlacementScore + matched * CONFIG.perMatchedEdge - missed * CONFIG.unmatchedEdgePenalty);
   return { matched, missed, per, gain };
@@ -495,7 +542,7 @@ function evaluate(x, y, edges) {
 function bestAt(x, y, t) {
   if (!settings.rotation) return evaluate(x, y, edgesOf(t)).gain;
   let best = 0;
-  for (let r = 0; r < 4; r++) best = Math.max(best, evaluate(x, y, edgesOf({ ...t, rot: r })).gain);
+  for (let r = 0; r < GRID.n; r++) best = Math.max(best, evaluate(x, y, edgesOf({ ...t, rot: r })).gain);
   return best;
 }
 
@@ -514,7 +561,8 @@ function placeFront(x, y) {
   if (stat === "fertility" && CONFIG.fertilityGrowsPopulation) S.pop += maxPop() - oldMax;
   S.turn++;
   S.totalMatches += ev.matched; S.bestGain = Math.max(S.bestGain, ev.gain);
-  popups.push({ wx: x * CONFIG.tileSize, wy: y * CONFIG.tileSize, text: "+" + ev.gain, sub: STAT[stat].name, color: STAT[stat].color, t0: now() });
+  const [pcx, pcy] = GRID.center(x, y);
+  popups.push({ wx: pcx, wy: pcy, text: "+" + ev.gain, sub: STAT[stat].name, color: STAT[stat].color, t0: now() });
   bumpStat(stat);
   sfx.place(ev.matched); haptic(ev.matched >= 3 ? "medium" : "light");
 
@@ -641,7 +689,7 @@ function updateLayout() {
 }
 const toWorld = (sx, sy) => [(sx - view.cx) / cam.z + cam.x, (sy - view.cy) / cam.z + cam.y];
 const toScreen = (wx, wy) => [(wx - cam.x) * cam.z + view.cx, (wy - cam.y) * cam.z + view.cy];
-const cellAt = (sx, sy) => { const [wx, wy] = toWorld(sx, sy); return [Math.round(wx / CONFIG.tileSize), Math.round(wy / CONFIG.tileSize)]; };
+const cellAt = (sx, sy) => GRID.cellAt(...toWorld(sx, sy));
 function zoomAt(sx, sy, nz) {
   nz = clamp(nz, 0.3, 2.6);
   const [wx, wy] = toWorld(sx, sy);
@@ -695,17 +743,16 @@ function onBoardTap(sx, sy) {
     updateTray(); renderInspect(); return;
   }
   inspect = null; renderInspect();
-  if (S.over || settings.placeMode !== "tap") { updateTray(); return; }
-  if (ghost && ghost.x === gx && ghost.y === gy) { rotateFront(); return; }
+  if (!S.over && ghost && ghost.x === gx && ghost.y === gy) { rotateFront(); return; }
+  if (S.over || settings.placeMode !== "tap") { ghost = null; updateTray(); return; }
   if (S.valid.has(k)) {
     ghost = { x: gx, y: gy };
-    ghostAngle = S.queue[0].rot * Math.PI / 2;
+    ghostAngle = S.queue[0].rot * GRID.step;
     sfx.select(); haptic("light");
   } else ghost = null;
   updateTray();
 }
 
-const DIR_NAME = ["N", "E", "S", "W"];
 function renderInspect() {
   const el = $("#inspect");
   const t = inspect && S.board.get(key(inspect.x, inspect.y));
@@ -713,12 +760,13 @@ function renderInspect() {
   const stat = CONFIG.biomeStat[t.primary];
   $("#insTitle").innerHTML = tileTitleHTML(t);
   $("#insMeta").innerHTML = "Feeds <b style='color:" + STAT[stat].color + "'>" + STAT[stat].name + "</b> · " + KIND_LABEL[t.kind] + " tile · placed turn " + t.turn + " · scored +" + t.gain;
+  const names = GRID.dirNames(t.x, t.y);
   $("#insEdges").innerHTML = t.edges.map((b, i) => {
-    const n = S.board.get(key(t.x + DIRS[i][0], t.y + DIRS[i][1]));
+    const [nx, ny, j] = GRID.neighbor(t.x, t.y, i), n = S.board.get(key(nx, ny));
     const st = !n ? "<span class='st dim'>open</span>"
-      : n.edges[(i + 2) % 4] === b ? "<span class='st' style='color:#7dffa0'>✓ match</span>"
-      : "<span class='st' style='color:#ff7a7a'>✕ " + n.edges[(i + 2) % 4] + "</span>";
-    return "<div><span class='dir'>" + DIR_NAME[i] + "</span><span class='sw' style='background:" + BIOME_COLOR[b] + "'></span>" + b + st + "</div>";
+      : n.edges[j] === b ? "<span class='st' style='color:#7dffa0'>✓ match</span>"
+      : "<span class='st' style='color:#ff7a7a'>✕ " + n.edges[j] + "</span>";
+    return "<div><span class='dir'>" + names[i] + "</span><span class='sw' style='background:" + BIOME_COLOR[b] + "'></span>" + b + st + "</div>";
   }).join("");
   el.style.bottom = (view.h - $("#tray").getBoundingClientRect().top + 10) + "px";
   el.classList.add("on");
@@ -736,17 +784,17 @@ frontWrap.addEventListener("pointermove", e => {
   if (!drag || drag.id !== e.pointerId) return;
   drag.x = e.clientX; drag.y = e.clientY;
   if (!drag.active && settings.placeMode === "drag" && Math.hypot(drag.x - drag.sx, drag.y - drag.sy) > 8) {
-    drag.active = true; frontWrap.classList.add("lifted");
+    drag.active = true; frontWrap.classList.add("lifted"); ghost = null;
     inspect = null; renderInspect();
-    ghostAngle = S.queue[0].rot * Math.PI / 2; haptic("light");
+    ghostAngle = S.queue[0].rot * GRID.step; haptic("light");
   }
   if (drag.active) {
     const lift = 64;
     const [wx, wy] = toWorld(drag.x, drag.y - lift);
-    const gx = Math.round(wx / CONFIG.tileSize), gy = Math.round(wy / CONFIG.tileSize);
-    const d = Math.hypot(wx - gx * CONFIG.tileSize, wy - gy * CONFIG.tileSize);
+    let best = null, bd = GRID.reach;
+    for (const v of S.valid.values()) { const [cx, cy] = GRID.center(v.x, v.y), d = Math.hypot(wx - cx, wy - cy); if (d < bd) { bd = d; best = v; } }
     const prev = drag.snap;
-    drag.snap = S.valid.has(key(gx, gy)) && d < CONFIG.tileSize * 0.75 ? { x: gx, y: gy } : null;
+    drag.snap = best ? { x: best.x, y: best.y } : null;
     if (drag.snap && (!prev || prev.x !== drag.snap.x || prev.y !== drag.snap.y)) { haptic("light"); sfx.rotate(); }
     drag.wx = wx; drag.wy = wy;
     updateTray();
@@ -755,7 +803,8 @@ frontWrap.addEventListener("pointermove", e => {
 function endDrag(e) {
   if (!drag || drag.id !== e.pointerId) return;
   const d = drag; drag = null; frontWrap.classList.remove("lifted");
-  if (d.active) { if (d.snap && e.type === "pointerup") placeFront(d.snap.x, d.snap.y); else updateTray(); }
+  // Dropping on a valid spot stages the tile as a preview; the Place button confirms.
+  if (d.active) { if (d.snap && e.type === "pointerup") { ghost = { ...d.snap }; sfx.select(); } updateTray(); }
   else if (e.type === "pointerup") rotateFront();
 }
 frontWrap.addEventListener("pointerup", endDrag);
@@ -765,11 +814,11 @@ $("#rotBtn").onclick = rotateFront;
 $("#placeBtn").onclick = () => { if (ghost) placeFront(ghost.x, ghost.y); };
 $("#recenter").onclick = recenter;
 function recenter() {
-  if (!S.board.size) { cam.x = cam.y = 0; cam.z = 1.15; return; }
+  if (!S.board.size) { [cam.x, cam.y] = GRID.center(0, 0); cam.z = 1.15; return; }
   let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
-  for (const t of S.board.values()) { x0 = Math.min(x0, t.x); y0 = Math.min(y0, t.y); x1 = Math.max(x1, t.x); y1 = Math.max(y1, t.y); }
-  const T = CONFIG.tileSize, w = (x1 - x0 + 3) * T, h = (y1 - y0 + 3) * T;
-  camTarget = { x: (x0 + x1) / 2 * T, y: (y0 + y1) / 2 * T, z: clamp(Math.min(view.w / w, (view.bottom - view.top) / h), 0.3, 1.3) };
+  for (const t of S.board.values()) { const [cx, cy] = GRID.center(t.x, t.y); x0 = Math.min(x0, cx); y0 = Math.min(y0, cy); x1 = Math.max(x1, cx); y1 = Math.max(y1, cy); }
+  const pad = GRID.reach * 3, w = x1 - x0 + pad, h = y1 - y0 + pad;
+  camTarget = { x: (x0 + x1) / 2, y: (y0 + y1) / 2, z: clamp(Math.min(view.w / w, (view.bottom - view.top) / h), 0.3, 1.3) };
 }
 let camTarget = null;
 
@@ -794,73 +843,65 @@ function drawGlyph(c, stat, s) {
     c.beginPath(); c.moveTo(ex + s * 0.2, ey - s * 0.02); c.lineTo(ex, ey); c.lineTo(ex + s * 0.03, ey + s * 0.2); c.stroke();
   }
 }
-// Draws one tile centered at (x,y). edges are already in drawing orientation unless angle is given.
-function drawTile(c, edges, primary, x, y, size, { angle = 0, scale = 1, alpha = 1 } = {}) {
-  const h = size / 2;
+function polyPath(c, x, y, vs, k = 1) {
+  c.beginPath();
+  vs.forEach(([vx, vy], i) => i ? c.lineTo(x + vx * k, y + vy * k) : c.moveTo(x + vx * k, y + vy * k));
+  c.closePath();
+}
+// Draws one tile centred at (x,y) using the cell's verts; angle spins it around the centre.
+function drawTile(c, vs, edges, primary, x, y, { angle = 0, scale = 1, alpha = 1 } = {}) {
+  const n = vs.length, R = Math.max(...vs.map(([a, b]) => Math.hypot(a, b)));
   c.save(); c.translate(x, y); if (scale !== 1) c.scale(scale, scale); if (angle) c.rotate(angle);
   c.globalAlpha = alpha;
-  const P = [[-h, -h], [h, -h], [h, h], [-h, h]];
-  const tint = [0.1, 0, -0.1, 0];
-  for (let i = 0; i < 4; i++) {
-    const a = P[i], b = P[(i + 1) % 4];
+  for (let i = 0; i < n; i++) {
+    const a = vs[i], b = vs[(i + 1) % n];
     c.beginPath(); c.moveTo(0, 0); c.lineTo(a[0], a[1]); c.lineTo(b[0], b[1]); c.closePath();
-    c.fillStyle = shade(BIOME_COLOR[edges[i]], tint[i]); c.fill();
+    c.fillStyle = shade(BIOME_COLOR[edges[i]], -(a[1] + b[1]) / (2 * R) * 0.14); c.fill();
   }
-  c.strokeStyle = "rgba(0,0,0,.10)"; c.lineWidth = 1;
-  c.beginPath(); c.moveTo(-h, -h); c.lineTo(h, h); c.moveTo(h, -h); c.lineTo(-h, h); c.stroke();
-  if (settings.tileStyle === "triangle") {
-    // Four full triangles carry the look; primary is a small badge at the apex.
-    const br = size * 0.17;
-    c.beginPath(); c.arc(0, 0, br, 0, Math.PI * 2);
-    c.fillStyle = BIOME_COLOR[primary]; c.fill();
-    c.lineWidth = size * 0.03; c.strokeStyle = "rgba(255,255,255,.85)"; c.stroke();
-    if (angle) c.rotate(-angle);
-    drawGlyph(c, CONFIG.biomeStat[primary], br * 1.25);
-    c.restore();
-    return;
-  }
-  const s = size * 0.42, r = s * 0.22;
-  c.beginPath(); c.roundRect(-s / 2, -s / 2, s, s, r);
+  c.strokeStyle = "rgba(0,0,0,.10)"; c.lineWidth = 1; c.beginPath();
+  for (const [vx, vy] of vs) { c.moveTo(0, 0); c.lineTo(vx, vy); }
+  c.stroke();
+  polyPath(c, 0, 0, vs, GRID.innerScale);
   c.fillStyle = BIOME_COLOR[primary]; c.fill();
-  c.lineWidth = size * 0.035; c.strokeStyle = shade(BIOME_COLOR[primary], -0.45); c.stroke();
+  c.lineJoin = "round"; c.lineWidth = R * 0.05; c.strokeStyle = shade(BIOME_COLOR[primary], -0.45); c.stroke();
   if (angle) c.rotate(-angle);
-  drawGlyph(c, CONFIG.biomeStat[primary], s);
+  drawGlyph(c, CONFIG.biomeStat[primary], R * GRID.glyphK);
   c.restore();
 }
-function edgeLine(c, x, y, i, inset) {
-  const h = CONFIG.tileSize / 2, P = [[-h, -h], [h, -h], [h, h], [-h, h]];
-  const a = P[i], b = P[(i + 1) % 4], ux = (b[0] - a[0]) / (2 * h), uy = (b[1] - a[1]) / (2 * h);
+function edgeLine(c, x, y, vs, i, inset) {
+  const a = vs[i], b = vs[(i + 1) % vs.length], L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  const ux = (b[0] - a[0]) / L, uy = (b[1] - a[1]) / L;
   c.beginPath(); c.moveTo(x + a[0] + ux * inset, y + a[1] + uy * inset); c.lineTo(x + b[0] - ux * inset, y + b[1] - uy * inset); c.stroke();
 }
-function drawEdgeMarks(x, y, per, t) {
+function drawEdgeMarks(x, y, vs, per, t) {
   const pulse = 0.6 + 0.4 * Math.sin(t / 180);
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < per.length; i++) {
     if (!per[i]) continue;
     if (per[i] === "match") {
       ctx.save(); ctx.strokeStyle = "rgba(170,255,190," + pulse + ")"; ctx.lineWidth = 5; ctx.lineCap = "round";
-      ctx.shadowColor = "#7dffa0"; ctx.shadowBlur = 14; edgeLine(ctx, x, y, i, 6); ctx.restore();
+      ctx.shadowColor = "#7dffa0"; ctx.shadowBlur = 14; edgeLine(ctx, x, y, vs, i, 6); ctx.restore();
     } else {
       ctx.save(); ctx.strokeStyle = "rgba(255,90,90,.85)"; ctx.lineWidth = 3; ctx.setLineDash([5, 5]); ctx.lineCap = "round";
-      edgeLine(ctx, x, y, i, 8); ctx.restore();
+      edgeLine(ctx, x, y, vs, i, 8); ctx.restore();
     }
   }
 }
 function currentPreview() {
   if (S.over) return null;
   if (drag && drag.active) return drag.snap ? { ...drag.snap, snapped: true } : { free: true };
-  if (ghost && settings.placeMode === "tap") return { ...ghost, snapped: true };
+  if (ghost) return { ...ghost, snapped: true };
   return null;
 }
 
 function frame() {
-  const t = now(), T = CONFIG.tileSize;
+  const t = now();
   if (camTarget) {
     cam.x = lerp(cam.x, camTarget.x, 0.15); cam.y = lerp(cam.y, camTarget.y, 0.15); cam.z = lerp(cam.z, camTarget.z, 0.15);
     if (Math.abs(cam.z - camTarget.z) < 0.002 && Math.hypot(cam.x - camTarget.x, cam.y - camTarget.y) < 0.5) camTarget = null;
     if (ptrs.size) camTarget = null;
   }
   const front = S.queue[0];
-  const targetAngle = front ? front.rot * Math.PI / 2 : 0;
+  const targetAngle = front ? front.rot * GRID.step : 0;
   ghostAngle = lerp(ghostAngle, targetAngle, 0.3);
 
   ctx.setTransform(view.dpr, 0, 0, view.dpr, 0, 0);
@@ -870,6 +911,7 @@ function frame() {
 
   ctx.save();
   ctx.translate(view.cx + sx, view.cy + sy); ctx.scale(cam.z, cam.z); ctx.translate(-cam.x, -cam.y);
+  ctx.lineJoin = "round";
 
   // Valid spots
   const preview = currentPreview();
@@ -877,9 +919,9 @@ function frame() {
     const pulse = 0.14 + 0.06 * Math.sin(t / 400);
     ctx.save(); ctx.setLineDash([6, 6]); ctx.lineWidth = 1.5 / Math.max(cam.z, 0.6);
     for (const v of S.valid.values()) {
-      const x = v.x * T, y = v.y * T;
+      const [x, y] = GRID.center(v.x, v.y);
       ctx.strokeStyle = "rgba(255,255,255," + pulse + ")";
-      ctx.beginPath(); ctx.roundRect(x - T / 2 + 5, y - T / 2 + 5, T - 10, T - 10, 8); ctx.stroke();
+      polyPath(ctx, x, y, GRID.verts(v.x, v.y), 0.84); ctx.stroke();
       if (settings.hints) {
         const g = bestAt(v.x, v.y, front);
         ctx.fillStyle = g >= 3 ? "rgba(170,255,190,.8)" : "rgba(255,255,255,.35)";
@@ -892,68 +934,68 @@ function frame() {
 
   // Tile shadows
   ctx.fillStyle = "rgba(0,0,0,.35)";
-  for (const tile of S.board.values()) { const k = clamp((t - tile.placedAt) / 280, 0, 1); ctx.globalAlpha = k; ctx.fillRect(tile.x * T - T / 2 + 2, tile.y * T - T / 2 + 5, T, T); }
+  for (const tile of S.board.values()) {
+    const [x, y] = GRID.center(tile.x, tile.y);
+    ctx.globalAlpha = clamp((t - tile.placedAt) / 280, 0, 1);
+    polyPath(ctx, x + 2, y + 5, GRID.verts(tile.x, tile.y)); ctx.fill();
+  }
   ctx.globalAlpha = 1;
 
   // Tiles
   for (const tile of S.board.values()) {
-    const k = clamp((t - tile.placedAt) / 300, 0, 1);
-    drawTile(ctx, tile.edges, tile.primary, tile.x * T, tile.y * T, T, { scale: lerp(0.55, 1, easeOutBack(k)), alpha: clamp(k * 3, 0, 1) });
+    const k = clamp((t - tile.placedAt) / 300, 0, 1), [x, y] = GRID.center(tile.x, tile.y);
+    drawTile(ctx, GRID.verts(tile.x, tile.y), tile.edges, tile.primary, x, y, { scale: lerp(0.55, 1, easeOutBack(k)), alpha: clamp(k * 3, 0, 1) });
   }
   // Seams where edges don't match
   ctx.save(); ctx.strokeStyle = "rgba(8,12,15,.6)"; ctx.lineWidth = 2.2; ctx.lineCap = "round";
-  for (const tile of S.board.values()) for (const i of [1, 2]) {
-    const n = S.board.get(key(tile.x + DIRS[i][0], tile.y + DIRS[i][1]));
-    if (n && n.edges[(i + 2) % 4] !== tile.edges[i]) edgeLine(ctx, tile.x * T, tile.y * T, i, 0);
+  for (const tile of S.board.values()) {
+    const [x, y] = GRID.center(tile.x, tile.y), vs = GRID.verts(tile.x, tile.y);
+    for (let i = 0; i < GRID.n; i++) {
+      const [nx, ny, j] = GRID.neighbor(tile.x, tile.y, i), n = S.board.get(key(nx, ny));
+      if (n && n.edges[j] !== tile.edges[i]) edgeLine(ctx, x, y, vs, i, 0);
+    }
   }
   ctx.restore();
   // Placement flashes: glow matched edges + ripple
   for (const tile of S.board.values()) {
     const age = t - tile.placedAt; if (age > 900) continue;
-    const k = age / 900, x = tile.x * T, y = tile.y * T;
+    const k = age / 900, [x, y] = GRID.center(tile.x, tile.y), vs = GRID.verts(tile.x, tile.y);
     ctx.save(); ctx.globalAlpha = 1 - k;
     ctx.strokeStyle = "#bfffd0"; ctx.lineWidth = 5; ctx.lineCap = "round"; ctx.shadowColor = "#7dffa0"; ctx.shadowBlur = 18;
-    for (let i = 0; i < 4; i++) if (tile.per[i] === "match") edgeLine(ctx, x, y, i, 3);
+    for (let i = 0; i < GRID.n; i++) if (tile.per[i] === "match") edgeLine(ctx, x, y, vs, i, 3);
     ctx.shadowBlur = 0; ctx.strokeStyle = "rgba(255,255,255,.7)"; ctx.lineWidth = 2;
-    const g = easeOutCubic(k) * 22;
-    ctx.beginPath(); ctx.roundRect(x - T / 2 - g, y - T / 2 - g, T + g * 2, T + g * 2, 8 + g / 2); ctx.stroke();
+    polyPath(ctx, x, y, vs, 1 + easeOutCubic(k) * 0.6); ctx.stroke();
     ctx.restore();
   }
 
   // Inspected tile: outline + live match state of each edge
   const ins = inspect && S.board.get(key(inspect.x, inspect.y));
   if (ins) {
-    const x = ins.x * T, y = ins.y * T;
+    const [x, y] = GRID.center(ins.x, ins.y), vs = GRID.verts(ins.x, ins.y);
     ctx.save(); ctx.strokeStyle = "rgba(255,255,255," + (0.65 + 0.3 * Math.sin(t / 220)) + ")"; ctx.lineWidth = 2.5;
-    ctx.beginPath(); ctx.roundRect(x - T / 2 - 3, y - T / 2 - 3, T + 6, T + 6, 6); ctx.stroke(); ctx.restore();
-    drawEdgeMarks(x, y, ins.edges.map((b, i) => {
-      const n = S.board.get(key(ins.x + DIRS[i][0], ins.y + DIRS[i][1]));
-      return !n ? null : n.edges[(i + 2) % 4] === b ? "match" : "miss";
-    }), t);
+    polyPath(ctx, x, y, vs, 1.08); ctx.stroke(); ctx.restore();
+    drawEdgeMarks(x, y, vs, evaluate(ins.x, ins.y, ins.edges).per, t);
   }
 
-  // Ghost / dragged tile
+  // Ghost (tap preview, staged drop, or snapped drag)
   let label = null;
-  if (preview && front) {
-    if (preview.snapped) {
-      const x = preview.x * T, y = preview.y * T;
-      const ev = evaluate(preview.x, preview.y, edgesOf(front));
-      ctx.save(); ctx.shadowColor = "rgba(0,0,0,.5)"; ctx.shadowBlur = 18; ctx.shadowOffsetY = 8;
-      drawTile(ctx, front.base, front.primary, x, y, T, { angle: ghostAngle, scale: 1.04, alpha: 0.95 });
-      ctx.restore();
-      const pa = 0.5 + 0.3 * Math.sin(t / 220);
-      ctx.save(); ctx.strokeStyle = "rgba(255,255,255," + pa + ")"; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.roundRect(x - T / 2 - 3, y - T / 2 - 3, T + 6, T + 6, 6); ctx.stroke(); ctx.restore();
-      drawEdgeMarks(x, y, ev.per, t);
-      label = { wx: x, wy: y - T / 2, ev, stat: CONFIG.biomeStat[front.primary] };
-    }
+  if (preview && front && preview.snapped) {
+    const [x, y] = GRID.center(preview.x, preview.y), vs = GRID.verts(preview.x, preview.y);
+    const edges = edgesOf(front), ev = evaluate(preview.x, preview.y, edges);
+    ctx.save(); ctx.shadowColor = "rgba(0,0,0,.5)"; ctx.shadowBlur = 18; ctx.shadowOffsetY = 8;
+    drawTile(ctx, vs, edges, front.primary, x, y, { angle: ghostAngle - targetAngle, scale: 1.04, alpha: 0.95 });
+    ctx.restore();
+    ctx.save(); ctx.strokeStyle = "rgba(255,255,255," + (0.5 + 0.3 * Math.sin(t / 220)) + ")"; ctx.lineWidth = 2;
+    polyPath(ctx, x, y, vs, 1.08); ctx.stroke(); ctx.restore();
+    drawEdgeMarks(x, y, vs, ev.per, t);
+    label = { wx: x, wy: y + Math.min(...vs.map(v => v[1])), ev, stat: CONFIG.biomeStat[front.primary] };
   }
   ctx.restore();
 
   // Free-floating drag tile (screen space, above finger)
   if (drag && drag.active && !drag.snap) {
     ctx.save(); ctx.shadowColor = "rgba(0,0,0,.5)"; ctx.shadowBlur = 22; ctx.shadowOffsetY = 12;
-    drawTile(ctx, front.base, front.primary, drag.x, drag.y - 64, T * cam.z * 1.08, { angle: ghostAngle, alpha: 0.92 });
+    drawTile(ctx, scaleVerts(GRID.verts(0, 0), cam.z * 1.08), edgesOf(front), front.primary, drag.x, drag.y - 64, { angle: ghostAngle - targetAngle, alpha: 0.92 });
     ctx.restore();
   }
 
@@ -1046,8 +1088,10 @@ function renderThreat() {
 function drawTileTo(canvas, edges, primary) {
   const c = canvas.getContext("2d"), s = canvas.width;
   c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, s, s);
-  c.save(); c.beginPath(); c.roundRect(0, 0, s, s, s * 0.08); c.clip();
-  drawTile(c, edges, primary, s / 2, s / 2, s);
+  const sq = GRID.n === 4;
+  c.save();
+  if (sq) { c.beginPath(); c.roundRect(0, 0, s, s, s * 0.08); c.clip(); }
+  drawTile(c, scaleVerts(GRID.verts(0, 0), sq ? s / SQ : s * 0.8 / TRI), edges, primary, s / 2, s / 2);
   c.restore();
 }
 function updateTray() {
@@ -1055,10 +1099,10 @@ function updateTray() {
   const fc = $("#frontCv");
   if (frontIdShown !== f.id) {
     drawTileTo(fc, f.base, f.primary);
-    fc.style.transition = "none"; fc.style.transform = "rotate(" + f.rot * 90 + "deg)"; void fc.offsetWidth; fc.style.transition = "";
+    fc.style.transition = "none"; fc.style.transform = "rotate(" + f.rot * 360 / GRID.n + "deg)"; void fc.offsetWidth; fc.style.transition = "";
     frontWrap.classList.remove("pop"); void frontWrap.offsetWidth; frontWrap.classList.add("pop");
     frontIdShown = f.id; frontRotShown = f.rot;
-  } else if (frontRotShown !== f.rot) { fc.style.transform = "rotate(" + f.rot * 90 + "deg)"; frontRotShown = f.rot; }
+  } else if (frontRotShown !== f.rot) { fc.style.transform = "rotate(" + f.rot * 360 / GRID.n + "deg)"; frontRotShown = f.rot; }
   const stat = CONFIG.biomeStat[f.primary];
   $("#tName").innerHTML = tileTitleHTML(f);
   $("#tStat").innerHTML = "Feeds <b style='--sc:" + STAT[stat].color + "'>" + STAT[stat].name + "</b>";
@@ -1070,9 +1114,10 @@ function updateTray() {
   nr.style.display = settings.queueSize > 1 ? "" : "none";
   const tap = settings.placeMode === "tap";
   $("#rotBtn").hidden = !settings.rotation;
-  $("#placeBtn").hidden = !tap; $("#dragHint").hidden = tap;
-  $("#placeBtn").disabled = !(ghost && tap) || S.over;
-  $("#placeBtn").textContent = ghost && tap ? "Place ✓" : "Place";
+  const showPlace = tap || !!ghost;
+  $("#placeBtn").hidden = !showPlace; $("#dragHint").hidden = showPlace;
+  $("#placeBtn").disabled = !ghost || S.over;
+  $("#placeBtn").textContent = ghost ? "Place ✓" : "Place";
 }
 
 // ---------------------------------------------------------------------
@@ -1103,8 +1148,9 @@ document.querySelectorAll(".seg[data-key]").forEach(seg => seg.addEventListener(
   if (k === "queueSize") refillQueue();
   if (k === "threats") { if (settings.threats && !S.threat && !S.over) spawnThreat(true); if (!settings.threats) S.threat = null; }
   if (k === "placeMode") ghost = null;
-  if (k === "tileStyle") frontIdShown = null;
-  saveSettings(); syncSegs(); updateUI();
+  saveSettings(); syncSegs();
+  if (k === "grid") { closeSheets(); newRun(); return; }
+  updateUI();
 }));
 document.querySelectorAll(".seg[data-multi]").forEach(seg => seg.addEventListener("click", e => {
   const b = e.target.closest("button"); if (!b) return;
@@ -1168,10 +1214,10 @@ function showHelp() {
   showModal(
     "<h2>Evolve · prototype</h2><div class='help'><ul>" +
     "<li>The <b>centre</b> of each tile is its biome. It decides which stat the tile grows.</li>" +
-    "<li>The four <b>edge triangles</b> should match their neighbours' facing edges: <b>+1</b> per match, up to +5 per tile.</li>" +
+    "<li>Each <b>edge</b> colour should match the neighbour it touches: <b>+1</b> per match, up to +" + (GRID.n + 1) + " per tile.</li>" +
     "<li><b style='color:var(--fertility)'>Fertility</b> raises your max population. <b style='color:var(--vitality)'>Vitality</b> blocks damage when a threat strikes. <b style='color:var(--adaptability)'>Adaptability</b> regrows each turn, but not while CRITICAL.</li>" +
     "<li>You see <i>what</i> threat is coming and <i>when</i>, but not how hard it will hit.</li>" +
-    "<li>" + (settings.placeMode === "tap" ? "Tap a dashed spot to preview. Tap it again (or the tile) to rotate, then press <b>Place</b>." : "Drag the tile from the tray onto a dashed spot. Tap the tile to rotate.") + " Drag to pan, pinch to zoom.</li>" +
+    "<li>" + (settings.placeMode === "tap" ? "Tap a dashed spot to preview. Tap it again (or the tile) to rotate, then press <b>Place</b>." : "Drag the tile from the tray onto a dashed spot. Tap it to rotate, drag again to move it, then press <b>Place</b>.") + " Drag to pan, pinch to zoom.</li>" +
     "</ul></div><div class='legend'>" + legend + "</div>" +
     "<div class='btnrow'><button class='btn primary' data-ok>Begin</button></div>",
     () => { try { localStorage.setItem("evolve.proto.help", "1"); } catch (e) {} });
